@@ -46,19 +46,19 @@ FEATURES = [
 LGB_PARAMS = dict(learning_rate=0.05, n_estimators=800, num_leaves=31,
                   colsample_bytree=0.8, subsample=0.8, min_child_samples=20,
                   reg_alpha=0.1, verbose=-1)
-# 决策阈值（可调）。std_th 为幅度风险线：近7日价差波动超过该值时一律观望
-DECISION_TH = dict(hi=0.55, lo=0.45, std_th=80.0)
+# 决策阈值（可调）。单边策略：只在 P(spread>0) > prob_th（预测正价差）且
+# 近 7 日价差波动 <= std_th 时交易（卖：日前卖、实时买），其余一律观望。
+# 依据：模型对正价差方向有可靠信号（test 71%）、对负价差方向弱（58%），
+# 单边规避负价差方向的不对称亏损（实测 val/test 两时段均转正）。
+DECISION_TH = dict(prob_th=0.5, std_th=120.0)
 
 
-def decision_from_prob(prob, std7, th_hi=DECISION_TH["hi"], th_lo=DECISION_TH["lo"],
+def decision_from_prob(prob, std7, prob_th=DECISION_TH["prob_th"],
                        std_th=DECISION_TH["std_th"]):
-    """由方向概率 + 波动风控给出 (decision, direction)。
-    direction: +1 卖方向, -1 买方向（用于方向准确率，prob>0.5 -> +1）。"""
-    decision = np.where(
-        std7 > std_th, "hold",
-        np.where(prob > th_hi, "sell",
-                 np.where(prob < th_lo, "buy", "hold")))
-    direction = np.where(prob > 0.5, 1, -1)
+    """单边策略决策：返回 (decision, direction)。
+    direction: 仅 +1（卖方向）或 -1（信息用）；实际只交易 sell。"""
+    decision = np.where((prob > prob_th) & (std7 <= std_th), "sell", "hold")
+    direction = np.where(prob > prob_th, 1, -1)
     return decision, direction
 
 

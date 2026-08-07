@@ -205,15 +205,13 @@ def predict_day(state, node, target_date):
     X = X[feat_cols]
 
     models = state["models"]
-    # 方向分类器（决策核心）：P(spread>0)；spread_std7 幅度风险控制
+    # 方向分类器（决策核心）：P(spread>0)。单边策略：只在预测正价差且波动可控时卖，其余观望。
     clf = models["lgbm_spread_clf"]
     prob = clf.predict_proba(X)[:, 1]
     std7 = X["spread_std7"].fillna(99).values
-    th = meta.get("decision_thresholds", {"hi": 0.55, "lo": 0.45, "std_th": 80.0})
-    decision = np.where(std7 > th["std_th"], "hold",
-               np.where(prob > th["hi"], "sell",
-               np.where(prob < th["lo"], "buy", "hold")))
-    label_map = {"buy": "买", "sell": "卖", "hold": "观望"}
+    th = meta.get("decision_thresholds", {"prob_th": 0.5, "std_th": 120.0})
+    decision = np.where((prob > th["prob_th"]) & (std7 <= th["std_th"]), "sell", "hold")
+    label_map = {"sell": "卖", "hold": "观望"}
     direction = np.where(prob > 0.5, 1, -1)
 
     # 展示用回归

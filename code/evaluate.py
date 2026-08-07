@@ -97,11 +97,9 @@ def derive_columns(df):
 
 
 def consistency_check(df):
-    """校验 CSV 里已给的 direction_pred / decision_pred 与概率+波动阈值规则是否一致。"""
+    """校验 CSV 里已给的 direction_pred / decision_pred 与单边概率+波动规则是否一致。"""
     rule_decision = np.where(
-        df["spread_std7"] > 80.0, "hold",
-        np.where(df["prob_sell"] > 0.55, "sell",
-                 np.where(df["prob_sell"] < 0.45, "buy", "hold")))
+        (df["prob_sell"] > 0.5) & (df["spread_std7"] <= 120.0), "sell", "hold")
     rule_direction = np.where(df["prob_sell"] > 0.5, 1, -1)
     n_dec_mismatch = int((rule_decision != df["decision_pred"]).sum())
     n_dir_mismatch = int(

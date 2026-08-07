@@ -52,7 +52,8 @@ ORDER = [
 ]
 
 SPLIT_RANGES = {
-    "train": (pd.Timestamp("2025-10-01"), pd.Timestamp("2025-12-31")),
+    # train 扩至天气起始（2025-04-02），让模型见过更多市场状态（2DA 早期缺失由 NaN 处理）
+    "train": (pd.Timestamp("2025-04-02"), pd.Timestamp("2025-12-31")),
     "val":   (pd.Timestamp("2026-01-01"), pd.Timestamp("2026-05-31")),
     "test":  (pd.Timestamp("2026-06-01"), pd.Timestamp("2026-08-05")),
 }
