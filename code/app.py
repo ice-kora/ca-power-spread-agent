@@ -8,11 +8,11 @@ Flask 本地网页后端：输入 节点 + 目标日期 -> 预测次日 24h DA/R
 
 预测语义：target_date = 目标日（D+1），决策日 D = target_date - 1。
 滞后特征只使用 D-1 及更早的价格（决策时 D 日当日价格不可见，防泄漏）。
-D+1 的 2DA 负荷与天气为预报值，可直接作为特征（缺失时保留 NaN，LightGBM 原生处理）。
+D+1 的 2DA 负荷与天气为预报值，直接作特征；缺失时保留 NaN（LightGBM 原生处理）。
 
-数据边界：
-  - 可预测目标日上限由 D+1 的天气（至 2026-08-19）与 D-1..D-7 价格（D 日 ≤ master 内最后一天价格）决定。
-  - 回测：若 target_date 的价格真实值存在（≤ 价格数据末端），返回真实值对比与方向准确率。
+数据边界：价格历史滞后用 master.csv（价格日期范围）；D+1 的 2DA 负荷与天气从
+原始文件全范围读取（2DA 至 2026-08-07、天气至 2026-08-19），因此可预测目标日
+可延伸到 08-07（受 2DA 覆盖），更远期 2DA 缺失时该特征为 NaN。
 """
 import os
 import json
@@ -21,43 +21,75 @@ import numpy as np
 import pandas as pd
 import lightgbm as lgb
 from flask import Flask, jsonify, render_template, request
+from pandas.tseries.holiday import USFederalHolidayCalendar
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "code", "data")
 MODELS = os.path.join(ROOT, "code", "models")
 MASTER_PATH = os.path.join(DATA, "master.csv")
 FEAT_COLS_PATH = os.path.join(MODELS, "feature_cols.json")
+LOAD2_PATH = os.path.join(ROOT, "load_CA_ISO_TAC_2DA.csv")
+WEATHER_PATH = os.path.join(ROOT, "zone_weather_hourly.csv")
 
-NODES = ["SNLNDRO_1_N001", "CONTROLX_1_N001"]  # 训练覆盖的节点；ELCAJNGT 未训练
-VALUE_COLS = ["da_price", "rtpd_price", "spread", "load_actual",
-              "load_2da", "t2m", "ssrd", "wind100"]
+NODES = ["SNLNDRO_1_N001", "CONTROLX_1_N001"]  # 训练覆盖的节点
+ZONE_OF_NODE = {"SNLNDRO_1_N001": "ZP26", "CONTROLX_1_N001": "ZP26"}
+PRICE_COLS = ["da_price", "rtpd_price", "spread", "load_actual"]
+WEATHER_COLS = ["t2m", "ssrd", "wind100"]
+HOURS = list(range(1, 25))
 
-# 美国联邦假日（2025-2026）
-from pandas.tseries.holiday import USFederalHolidayCalendar
 _HOLIDAYS = set(USFederalHolidayCalendar().holidays(start="2025-01-01", end="2027-12-31").date)
 
 app = Flask(__name__)
+STATE = None
+
+
+def _pivot(df, col):
+    return df.pivot_table(index="date", columns="hour", values=col)
+
+
+def _get_pivot(pf, day, hour):
+    try:
+        v = pf.loc[day, hour]
+        return float(v) if pd.notna(v) else np.nan
+    except (KeyError, TypeError):
+        return np.nan
+
+
+def _get_col(lk, col, day, hour):
+    return _get_pivot(lk[col], day, hour)
 
 
 def load_state():
-    """加载 master + 模型 + 特征契约，返回查找表。"""
     master = pd.read_csv(MASTER_PATH, parse_dates=["date"])
     master["date"] = master["date"].dt.date
-    lookups = {}
+
+    price_lk = {}
     for node in NODES:
         sub = master[master["node"] == node].sort_values(["date", "hour"])
-        lookups[node] = {
-            col: sub.pivot_table(index="date", columns="hour", values=col)
-            for col in VALUE_COLS
-        }
+        price_lk[node] = {c: _pivot(sub, c) for c in PRICE_COLS}
+
+    # 完整日期范围的 2DA 负荷（原始文件，含未来）
+    l2 = pd.read_csv(LOAD2_PATH)
+    l2["date"] = pd.to_datetime(l2["Date"].astype(str), format="mixed").dt.date
+    l2m = l2.melt(id_vars="date", value_vars=[f"H{i}" for i in HOURS], var_name="hc", value_name="v")
+    l2m["hour"] = l2m["hc"].str.extract(r"(\d+)").astype(int)
+    load2_lk = l2m.pivot_table(index="date", columns="hour", values="v")
+
+    # 完整日期范围的天气（按 zone；valid_pt 00:00 -> H1）
+    wt = pd.read_csv(WEATHER_PATH)
+    wt = wt.rename(columns={"t2m_c": "t2m", "ssrd_wm2": "ssrd"})
+    vt = pd.to_datetime(wt["valid_pt"])
+    wt["date"] = vt.dt.date
+    wt["hour"] = vt.dt.hour + 1
+    weather_lk = {z: {c: _pivot(wt[wt["zone"] == z], c) for c in WEATHER_COLS}
+                  for z in wt["zone"].unique()}
+
     with open(FEAT_COLS_PATH, "r", encoding="utf-8") as f:
         meta = json.load(f)
     models = {name: lgb.Booster(model_file=os.path.join(MODELS, os.path.basename(p)))
               for name, p in meta["models"].items()}
-    return master, lookups, meta, models
-
-
-STATE = None
+    return {"master": master, "price_lk": price_lk, "load2_lk": load2_lk,
+            "weather_lk": weather_lk, "meta": meta, "models": models}
 
 
 def get_state():
@@ -67,53 +99,47 @@ def get_state():
     return STATE
 
 
-def _lookup(node_lk, col, day, hour):
-    """取某节点某天某 hour 的值，缺失返回 NaN。"""
-    try:
-        v = node_lk[col].loc[day, hour]
-        return float(v) if pd.notna(v) else np.nan
-    except (KeyError, TypeError):
-        return np.nan
-
-
-def build_features_for_day(lookups, node, target_date):
-    """构造单个目标日 24 行的特征 DataFrame（列顺序 = feature_cols.json 的 features）。"""
-    node_lk = lookups[node]
+def build_features_for_day(state, node, target_date):
+    """构造单个目标日 24 行特征 DataFrame（列顺序 = feature_cols.json 的 features）。"""
+    price_lk = state["price_lk"][node]
+    wlk = state["weather_lk"][ZONE_OF_NODE[node]]
+    load2_lk = state["load2_lk"]
     D = target_date - timedelta(days=1)
     rows = []
-    for h in range(1, 25):
-        def get(col, day):
-            return _lookup(node_lk, col, day, h)
-
-        vals = [get("spread", D - timedelta(days=k)) for k in range(1, 8)]
+    for h in HOURS:
+        getp = lambda col, day: _get_col(price_lk, col, day, h)  # noqa: E731
+        getw = lambda col, day: _get_col(wlk, col, day, h)      # noqa: E731
+        vals = [getp("spread", D - timedelta(days=k)) for k in range(1, 8)]
         vals = [v for v in vals if pd.notna(v)]
         mean7 = float(np.mean(vals)) if vals else np.nan
         std7 = float(np.std(vals)) if len(vals) > 1 else np.nan
 
-        # D+1 当天 load_2da 是否峰值（用于 load_peak_flag）
-        load2_row = node_lk["load_2da"].loc[target_date] if target_date in node_lk["load_2da"].index else pd.Series(dtype=float)
+        # load_peak_flag：D+1 当天 2DA 负荷是否峰值（缺失则 NaN）
         peak = np.nan
-        if not load2_row.empty and load2_row.notna().any():
-            peak = 1.0 if load2_row.get(h, np.nan) == load2_row.max() else 0.0
+        if target_date in load2_lk.index:
+            row = load2_lk.loc[target_date]
+            if row.notna().any():
+                hv = row.get(h, np.nan)
+                peak = 1.0 if pd.notna(hv) and hv == row.max() else 0.0
 
         dt = pd.Timestamp(target_date)
         rows.append({
-            "da_lag1": get("da_price", D - timedelta(days=1)),
-            "rtpd_lag1": get("rtpd_price", D - timedelta(days=1)),
-            "spread_lag1": get("spread", D - timedelta(days=1)),
-            "da_lag2": get("da_price", D - timedelta(days=2)),
-            "rtpd_lag2": get("rtpd_price", D - timedelta(days=2)),
-            "spread_lag2": get("spread", D - timedelta(days=2)),
-            "da_lag7": get("da_price", D - timedelta(days=7)),
-            "rtpd_lag7": get("rtpd_price", D - timedelta(days=7)),
-            "spread_lag7": get("spread", D - timedelta(days=7)),
+            "da_lag1": getp("da_price", D - timedelta(days=1)),
+            "rtpd_lag1": getp("rtpd_price", D - timedelta(days=1)),
+            "spread_lag1": getp("spread", D - timedelta(days=1)),
+            "da_lag2": getp("da_price", D - timedelta(days=2)),
+            "rtpd_lag2": getp("rtpd_price", D - timedelta(days=2)),
+            "spread_lag2": getp("spread", D - timedelta(days=2)),
+            "da_lag7": getp("da_price", D - timedelta(days=7)),
+            "rtpd_lag7": getp("rtpd_price", D - timedelta(days=7)),
+            "spread_lag7": getp("spread", D - timedelta(days=7)),
             "spread_mean7": mean7,
             "spread_std7": std7,
-            "load_actual_lag1": get("load_actual", D - timedelta(days=1)),
-            "load_2da_next": get("load_2da", target_date),
-            "t2m_next": get("t2m", target_date),
-            "ssrd_next": get("ssrd", target_date),
-            "wind100_next": get("wind100", target_date),
+            "load_actual_lag1": getp("load_actual", D - timedelta(days=1)),
+            "load_2da_next": _get_pivot(load2_lk, target_date, h),
+            "t2m_next": getw("t2m", target_date),
+            "ssrd_next": getw("ssrd", target_date),
+            "wind100_next": getw("wind100", target_date),
             "dow_next": dt.weekday(),
             "month_next": dt.month,
             "is_holiday_next": 1 if target_date in _HOLIDAYS else 0,
@@ -126,13 +152,14 @@ def build_features_for_day(lookups, node, target_date):
 
 
 def predict_day(state, node, target_date):
-    master, lookups, meta, models = state
+    meta = state["meta"]
     feat_cols = meta["features"]
-    X = build_features_for_day(lookups, node, target_date)
-    for c in meta["categorical"]:
-        X[c] = X[c].astype("category")
+    X = build_features_for_day(state, node, target_date)
+    node_map = {str(c): float(i) for i, c in enumerate(meta.get("node_categories", []))}
+    X["node"] = X["node"].map(node_map)
     X = X[feat_cols]
 
+    models = state["models"]
     spr_q10 = models["spread_q0.1"].predict(X)
     spr_q50 = models["spread_q0.5"].predict(X)
     spr_q90 = models["spread_q0.9"].predict(X)
@@ -143,22 +170,20 @@ def predict_day(state, node, target_date):
     label_map = {"buy": "买", "sell": "卖", "hold": "观望"}
     direction = np.where(spr_q50 < 0, -1, 1)
 
-    # 回测：target_date 的真实价格是否已存在（master 覆盖）
-    lk = lookups[node]
-    has_actual = target_date in lk["da_price"].index
-    da_act = rt_act = spr_act = None
-    acc = None
+    price_lk = state["price_lk"][node]
+    has_actual = target_date in price_lk["da_price"].index
+    da_act = rt_act = spr_act = acc = None
     if has_actual:
-        da_act = [lk["da_price"].loc[target_date, h] for h in range(1, 25)]
-        rt_act = [lk["rtpd_price"].loc[target_date, h] for h in range(1, 25)]
-        spr_act = [lk["spread"].loc[target_date, h] for h in range(1, 25)]
+        da_act = [price_lk["da_price"].loc[target_date, h] for h in HOURS]
+        rt_act = [price_lk["rtpd_price"].loc[target_date, h] for h in HOURS]
+        spr_act = [price_lk["spread"].loc[target_date, h] for h in HOURS]
         acc = float((np.sign(np.array(spr_act)) == direction).mean())
 
     return {
         "ok": True,
         "node": node,
         "target_date": target_date.isoformat(),
-        "hours": list(range(1, 25)),
+        "hours": HOURS,
         "da_pred": [float(x) for x in da_pred],
         "rtpd_pred": [float(x) for x in rt_pred],
         "spread_q10": [float(x) for x in spr_q10],
@@ -189,17 +214,16 @@ def api_predict():
         return jsonify({"ok": False, "error": "参数格式错误：需要 node 和 target_date"})
 
     if node not in NODES:
-        return jsonify({"ok": False, "error": "不支持的节点（当前已训练节点：" + "、".join(NODES) + "）"})
+        return jsonify({"ok": False, "error": "不支持的节点（当前已训练：" + "、".join(NODES) + "）"})
 
     state = get_state()
-    master, lookups, meta, models = state
-    # 边界校验：D-1 价格须存在（即 D-7 至少在 master 价格范围内）
+    master = state["master"]
     min_date = master["date"].min()
     max_date = master["date"].max()
-    if target_date - timedelta(days=8) < min_date:
+    if target_date < min_date:
         return jsonify({"ok": False, "error": "目标日期过早（无足够历史滞后）"})
-    if target_date > max_date + timedelta(days=1):
-        return jsonify({"ok": False, "error": f"目标日期超出可预测范围（数据截至 {max_date}，可预测至 {max_date + timedelta(days=1)}）"})
+    if target_date > max_date + timedelta(days=2):
+        return jsonify({"ok": False, "error": f"目标日期超出可预测范围（数据截至 {max_date}，建议 ≤ {max_date + timedelta(days=2)}）"})
 
     try:
         result = predict_day(state, node, target_date)

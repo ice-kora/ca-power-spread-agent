@@ -39,8 +39,9 @@ FEATURES = [
     "dow_next", "month_next", "is_holiday_next",
     "solar_flag", "load_peak_flag", "hour", "node",
 ]
-CATEGORICAL = ["hour", "node"]
 
+# 说明：node/hour 均作数值特征（node 显式编码为 0..k-1 整数），
+# 不依赖 pandas categorical 编码，避免训练/预测两端 codes 顺序不一致。
 LGB_PARAMS = dict(
     objective="quantile",
     learning_rate=0.05,
@@ -64,7 +65,6 @@ def train_one(df, target_col, alpha, name):
     model.fit(
         df.loc[df.split == "train", FEATURES],
         df.loc[df.split == "train", target_col],
-        categorical_feature=CATEGORICAL,
         eval_set=[(df.loc[df.split == "val", FEATURES], df.loc[df.split == "val", target_col])],
         callbacks=[lgb.early_stopping(80, verbose=False)],
     )
@@ -88,9 +88,9 @@ def main():
     os.makedirs(MODELS, exist_ok=True)
     df = pd.read_parquet(FEATURES_PATH)
 
-    # 确保分类特征为 category dtype（LightGBM categorical 要求）
-    for c in CATEGORICAL:
-        df[c] = df[c].astype("category")
+    # node 显式编码为 0..k-1 整数（数值特征）；hour 保留 1-24 也作数值特征。
+    node_codes, node_labels = pd.factorize(df["node"])
+    df["node"] = node_codes
 
     train = df[df.split == "train"]
     val = df[df.split == "val"]
@@ -139,9 +139,13 @@ def main():
     out.to_csv(PRED_PATH, index=False)
     print("saved", PRED_PATH, "rows:", len(out))
 
-    # 存特征契约，供 app.py 复用
+    # 存特征契约，供 app.py 复用（node 编码映射）
     with open(os.path.join(MODELS, "feature_cols.json"), "w", encoding="utf-8") as f:
-        json.dump({"features": FEATURES, "categorical": CATEGORICAL, "models": models}, f, ensure_ascii=False, indent=2)
+        json.dump({
+            "features": FEATURES,
+            "node_categories": [str(x) for x in node_labels],
+            "models": models,
+        }, f, ensure_ascii=False, indent=2)
 
     # ---- 简版测试集指标 ----
     mae = (out["spread_q50"] - out["spread_actual"]).abs().mean()
