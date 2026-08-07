@@ -41,7 +41,11 @@ ORDER = [
     "da_lag1", "rtpd_lag1", "spread_lag1",
     "da_lag2", "rtpd_lag2", "spread_lag2",
     "da_lag7", "rtpd_lag7", "spread_lag7",
-    "spread_mean7", "spread_std7", "load_actual_lag1",
+    "spread_mean7", "spread_std7",
+    "spread_mean14", "spread_std14", "spread_mean30", "spread_std30",
+    "load_actual_lag1", "load_actual_day_mean_lag1",
+    "peer_spread_lag1", "peer_da_lag1", "peer_rtpd_lag1",
+    "spread_day_std_lag1", "spread_day_range_lag1", "spread_day_max_lag1",
     "load_2da_next", "t2m_next", "ssrd_next", "wind100_next",
     "dow_next", "month_next", "is_holiday_next",
     "solar_flag", "load_peak_flag",
@@ -62,8 +66,8 @@ def assign_split(d):
     return np.nan
 
 
-def build_node(node_df, node_name):
-    """单节点特征构建。"""
+def build_node(node_df, node_name, peer_df=None):
+    """单节点特征构建。peer_df：同 zone 关联节点（用于节点间联动特征）。"""
     node_df = node_df.sort_values(["date", "hour"]).reset_index(drop=True)
 
     # 1) 转宽表：rows=date, cols=hour（对每列独立 unstack）
@@ -76,6 +80,15 @@ def build_node(node_df, node_name):
     full_idx = pd.date_range(node_df["date"].min(), node_df["date"].max(), freq="D")
     wide = {c: w.reindex(full_idx) for c, w in wide.items()}
 
+    # 1b) 同 zone 关联节点（peer）的价格宽表，用于节点间联动特征
+    peer_wide = None
+    if peer_df is not None:
+        peer_df = peer_df.sort_values(["date", "hour"]).reset_index(drop=True)
+        peer_wide = {}
+        for col in ("da_price", "rtpd_price", "spread"):
+            w = peer_df.set_index(["date", "hour"])[col].unstack("hour").sort_index().reindex(full_idx)
+            peer_wide[col] = w
+
     # 2) 历史滞后（D-1 / D-2 / D-7 同 hour）
     feats = {}
     for k in (1, 2, 7):
@@ -83,10 +96,27 @@ def build_node(node_df, node_name):
         feats["rtpd_lag%d" % k] = wide["rtpd_price"].shift(k)
         feats["spread_lag%d" % k] = wide["spread"].shift(k)
     feats["load_actual_lag1"] = wide["load_actual"].shift(1)
+    feats["load_actual_day_mean_lag1"] = wide["load_actual"].mean(axis=1).shift(1)
 
-    # 3) 均值/波动：D-1..D-7 同 hour（rolling(7) 再 shift(1)，剔除 D 当天）
+    # 3) 均值/波动：D-1..D-7 / 14 / 30 日同 hour（rolling 后 shift(1)，剔除 D 当天）
     feats["spread_mean7"] = wide["spread"].rolling(7).mean().shift(1)
     feats["spread_std7"] = wide["spread"].rolling(7).std().shift(1)
+    feats["spread_mean14"] = wide["spread"].rolling(14).mean().shift(1)
+    feats["spread_std14"] = wide["spread"].rolling(14).std().shift(1)
+    feats["spread_mean30"] = wide["spread"].rolling(30).mean().shift(1)
+    feats["spread_std30"] = wide["spread"].rolling(30).std().shift(1)
+
+    # 3b) D-1 日内形态（跨 24h 统计，shift(1) 取昨天）
+    sw = wide["spread"]
+    feats["spread_day_std_lag1"] = sw.std(axis=1).shift(1)
+    feats["spread_day_range_lag1"] = (sw.max(axis=1) - sw.min(axis=1)).shift(1)
+    feats["spread_day_max_lag1"] = sw.max(axis=1).shift(1)
+
+    # 3c) 节点间联动：peer 的 D-1 同 hour 价格（同 zone 另一节点）
+    if peer_wide is not None:
+        feats["peer_spread_lag1"] = peer_wide["spread"].shift(1)
+        feats["peer_da_lag1"] = peer_wide["da_price"].shift(1)
+        feats["peer_rtpd_lag1"] = peer_wide["rtpd_price"].shift(1)
 
     # 4) 未来已知（D+1 预报值，决策时已可得）
     feats["spread_next"] = wide["spread"].shift(-1)
@@ -132,10 +162,20 @@ def load_master():
 
 
 def build_features(master):
+    nodes = sorted(master["node"].unique())
+    # 同 zone 互为 peer（ZP26: CONTROLX <-> SNLNDRO），跨节点联动
+    zone_of = master.drop_duplicates("node").set_index("node")["zone"].to_dict()
+    peer_of = {}
+    for n in nodes:
+        peers = [m for m in nodes if m != n and zone_of.get(m) == zone_of.get(n)]
+        peer_of[n] = peers[0] if peers else None
+
     frames = []
-    for node in sorted(master["node"].unique()):
+    for node in nodes:
         nd = master[master["node"] == node]
-        frames.append(build_node(nd, node))
+        pn = peer_of[node]
+        peer_df = master[master["node"] == pn] if pn else None
+        frames.append(build_node(nd, node, peer_df))
     df = pd.concat(frames, ignore_index=True)
     df["split"] = df["date"].map(assign_split)
     df = df[ORDER].sort_values(["node", "date", "hour"]).reset_index(drop=True)

@@ -160,15 +160,23 @@ def predict_day(state, node, target_date):
     X = X[feat_cols]
 
     models = state["models"]
+    # 方向分类器（决策核心）：P(spread>0)；spread_std7 幅度风险控制
+    clf = models["lgbm_spread_clf"]
+    prob = clf.predict_proba(X)[:, 1]
+    std7 = X["spread_std7"].fillna(99).values
+    th = meta.get("decision_thresholds", {"hi": 0.55, "lo": 0.45, "std_th": 80.0})
+    decision = np.where(std7 > th["std_th"], "hold",
+               np.where(prob > th["hi"], "sell",
+               np.where(prob < th["lo"], "buy", "hold")))
+    label_map = {"buy": "买", "sell": "卖", "hold": "观望"}
+    direction = np.where(prob > 0.5, 1, -1)
+
+    # 展示用回归
     spr_q10 = models["spread_q0.1"].predict(X)
     spr_q50 = models["spread_q0.5"].predict(X)
     spr_q90 = models["spread_q0.9"].predict(X)
     da_pred = models["lgbm_da_q0.5"].predict(X)
     rt_pred = models["lgbm_rtpd_q0.5"].predict(X)
-
-    decision = np.where(spr_q90 < 0, "buy", np.where(spr_q10 > 0, "sell", "hold"))
-    label_map = {"buy": "买", "sell": "卖", "hold": "观望"}
-    direction = np.where(spr_q50 < 0, -1, 1)
 
     price_lk = state["price_lk"][node]
     has_actual = target_date in price_lk["da_price"].index
@@ -184,6 +192,7 @@ def predict_day(state, node, target_date):
         "node": node,
         "target_date": target_date.isoformat(),
         "hours": HOURS,
+        "prob_sell": [float(x) for x in prob],
         "da_pred": [float(x) for x in da_pred],
         "rtpd_pred": [float(x) for x in rt_pred],
         "spread_q10": [float(x) for x in spr_q10],

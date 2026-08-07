@@ -54,7 +54,7 @@ DEFAULT_PNG = os.path.join(HERE, "data", "arb_curve.png")
 
 REQUIRED_COLS = [
     "node", "date", "hour",
-    "spread_q10", "spread_q50", "spread_q90", "spread_actual",
+    "prob_sell", "spread_std7", "spread_q10", "spread_q50", "spread_q90", "spread_actual",
     "da_pred", "rtpd_pred", "da_actual", "rtpd_actual",
     "direction_pred", "decision_pred",
 ]
@@ -84,9 +84,10 @@ def load_predictions(path):
 
 
 def derive_columns(df):
-    """计算评估用的派生列（含 pnl，业务口径见模块 docstring）。"""
+    """计算评估用的派生列（含 pnl，业务口径见模块 docstring）。
+    方向由方向分类器的概率决定（train.py 已写入 direction_pred）。"""
     df = df.copy()
-    df["pred_sign"] = np.sign(df["spread_q50"]).astype(int)      # 预测方向
+    df["pred_sign"] = df["direction_pred"].astype(int)      # 预测方向（+1/-1）
     df["actual_sign"] = np.sign(df["spread_actual"]).astype(int)  # 实际方向
     df["dir_correct"] = df["pred_sign"] == df["actual_sign"]
     # 单笔收益 = sign(pred) * spread_actual；hold 不交易记 0
@@ -96,13 +97,15 @@ def derive_columns(df):
 
 
 def consistency_check(df):
-    """校验 CSV 里已给的 direction_pred / decision_pred 与规则是否一致。"""
+    """校验 CSV 里已给的 direction_pred / decision_pred 与概率+波动阈值规则是否一致。"""
     rule_decision = np.where(
-        df["spread_q90"] < 0, "buy",
-        np.where(df["spread_q10"] > 0, "sell", "hold"))
+        df["spread_std7"] > 80.0, "hold",
+        np.where(df["prob_sell"] > 0.55, "sell",
+                 np.where(df["prob_sell"] < 0.45, "buy", "hold")))
+    rule_direction = np.where(df["prob_sell"] > 0.5, 1, -1)
     n_dec_mismatch = int((rule_decision != df["decision_pred"]).sum())
     n_dir_mismatch = int(
-        (df["pred_sign"].astype(int) != df["direction_pred"].astype(int)).sum())
+        (rule_direction.astype(int) != df["direction_pred"].astype(int)).sum())
     return {"decision_mismatch": n_dec_mismatch,
             "direction_mismatch": n_dir_mismatch}
 
