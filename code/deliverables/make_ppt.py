@@ -62,32 +62,33 @@ CONTENT_W = Emu(int(SLIDE_W) - 2 * int(MARGIN))
 # ----------------------------------------------------------------------------
 def make_feature_chart(path):
     feats = [
-        ("da_lag1（D-1 日前价）", 31.2),
-        ("da_lag2（D-2 日前价）", 24.9),
-        ("month_next（月份）", 4.4),
-        ("load_2da_next（D+1 负荷预测）", 4.2),
-        ("da_lag7（D-7 日前价）", 4.1),
-        ("t2m_next（D+1 温度）", 3.1),
-        ("rtpd_lag7（D-7 实时价）", 3.0),
-        ("wind100_next（D+1 风速）", 2.8),
-        ("spread_std30（近30日价差波动）", 2.4),
-        ("dow_next（D+1 星期）", 2.3),
-        ("peer_spread_lag1（联动节点价差）", 1.6),
+        ("da_lag2（D-2 日前价）", 15.8),
+        ("spread_std14（近14日价差波动）", 13.1),
+        ("spread_std7（近7日价差波动）", 7.8),
+        ("node（节点）", 6.9),
+        ("month_next（月份）", 5.6),
+        ("da_lag1（D-1 日前价）", 5.5),
+        ("peer_rtpd_lag1（联动节点实时价滞后）", 5.0),
+        ("load_2da_next（D+1 负荷预测）", 5.0),
+        ("da_lag7（D-7 日前价）", 4.5),
+        ("rtpd_lag1（D-1 实时价）", 4.5),
+        ("ssrd_next（D+1 太阳辐射）", 4.1),
+        ("spread_lag7（D-7 价差）", 3.5),
     ]
-    cats = [("历史滞后", 72.8), ("未来预报", 18.3), ("日历", 8.2), ("滚动统计", 6.9), ("节点", 0.7)]
+    cats = [("历史滞后", 44.4), ("滚动统计（波动）", 24.1), ("未来预报", 22.9), ("日历", 9.7), ("节点", 6.9)]
 
     labels = [f[0] for f in feats][::-1]
     values = [f[1] for f in feats][::-1]
-    colors = [GOLD_HEX if v >= 20 else NAVY_HEX for v in values]
+    colors = [GOLD_HEX if v >= 13 else NAVY_HEX for v in values]
 
     fig = plt.figure(figsize=(11.6, 4.75), dpi=200)
     ax1 = fig.add_axes([0.02, 0.02, 0.55, 0.94])
     ax2 = fig.add_axes([0.66, 0.02, 0.33, 0.94])
 
     bars = ax1.barh(labels, values, color=colors, height=0.62)
-    ax1.set_xlim(0, 36)
-    ax1.set_xlabel("特征重要性（gain，%）", fontsize=11)
-    ax1.set_title("方向分类器 · Top 特征重要性", fontsize=13, fontweight="bold", color=NAVY_HEX, loc="left", pad=10)
+    ax1.set_xlim(0, 18)
+    ax1.set_xlabel("特征重要性（占比 %）", fontsize=11)
+    ax1.set_title("CatBoost 方向分类器 · Top 特征重要性", fontsize=13, fontweight="bold", color=NAVY_HEX, loc="left", pad=10)
     ax1.tick_params(axis="y", labelsize=10.5)
     ax1.tick_params(axis="x", labelsize=10)
     for bar, v in zip(bars, values):
@@ -98,11 +99,11 @@ def make_feature_chart(path):
 
     cvals = [c[1] for c in cats]
     clabels = [c[0] for c in cats]
-    ccolors = [NAVY_HEX, BLUE_HEX, GOLD_HEX, "#7F9DC0", GRAY_HEX]
+    ccolors = [NAVY_HEX, "#7F9DC0", BLUE_HEX, GOLD_HEX, GRAY_HEX]
     wedges, _ = ax2.pie(cvals, colors=ccolors, startangle=90, counterclock=False,
                         wedgeprops=dict(width=0.42, edgecolor="white", linewidth=2))
     ax2.text(0, 0.08, "类别汇总", ha="center", va="center", fontsize=12, fontweight="bold", color=NAVY_HEX)
-    ax2.text(0, -0.13, "按 gain", ha="center", va="center", fontsize=10, color=GRAY_HEX)
+    ax2.text(0, -0.13, "按占比", ha="center", va="center", fontsize=10, color=GRAY_HEX)
     ax2.legend(wedges, [f"{l}  {v:.1f}%" for l, v in zip(clabels, cvals)],
                loc="center left", bbox_to_anchor=(1.02, 0.5), fontsize=10.5, frameon=False)
 
@@ -116,10 +117,10 @@ def make_feature_chart(path):
 # ----------------------------------------------------------------------------
 def make_baseline_chart(path):
     rows = [
-        ("本工程（单边策略）", +1744,   NAVY_HEX, True),
+        ("本工程（单边策略）", +2243,   NAVY_HEX, True),
         ("不交易",              0,       GRAY_HEX, False),
-        ("反向策略（镜像上界）", +129655, GOLD_HEX, False),
-        ("全交易（无观望/风控）", -129655, RED_HEX,  False),
+        ("反向策略（镜像上界）", +128259, GOLD_HEX, False),
+        ("全交易（无观望/风控）", -128259, RED_HEX,  False),
     ]
     # 纵向排序：大的在上
     rows = sorted(rows, key=lambda r: r[1])
@@ -144,7 +145,7 @@ def make_baseline_chart(path):
                 fontsize=11, color="#333333", fontweight="bold")
 
     # 标注本策略
-    ax.text(xmax * 0.62, -0.34, "本策略 +1744：规避了全交易的 13 万大亏", fontsize=10.5,
+    ax.text(xmax * 0.62, -0.34, "本策略 +2243：规避了全交易的 12.8 万大亏", fontsize=10.5,
             color=NAVY_HEX, style="italic")
     ax.spines[["top", "right"]].set_visible(False)
     ax.grid(axis="x", linestyle="--", alpha=0.35)
@@ -332,13 +333,13 @@ p = tf.paragraphs[0]
 r = p.add_run(); r.text = "CA-ISO 电价价差预测"
 r.font.size = Pt(52); r.font.bold = True; r.font.color.rgb = WHITE
 p2 = tf.add_paragraph()
-r2 = p2.add_run(); r2.text = "基于 LightGBM 的方向分类与单边套利策略"
+r2 = p2.add_run(); r2.text = "基于 CatBoost 的方向分类与单边套利策略"
 r2.font.size = Pt(22); r2.font.color.rgb = RGBColor(0xBF, 0xD3, 0xE6)
 # 关键数字
 metrics = [
-    ("62.6%", "整体方向准确率"),
-    ("67.8%", "交易时段命中率 (test)"),
-    ("+1744", "test 模拟套利收益"),
+    ("63.9%", "整体方向准确率"),
+    ("68.8%", "交易时段命中率 (test)"),
+    ("+2243", "test 模拟套利收益"),
     ("109.1", "spread MAE（基线 129.0）"),
 ]
 card_w, card_h = Inches(2.72), Inches(1.35)
@@ -414,11 +415,11 @@ add_bullets(slide, [
 slide = add_slide(prs)
 add_title(slide, "预测方法（2）：方向分类器 + 单边决策规则", 5)
 add_bullets(slide, [
-    ("决策核心：LightGBM 方向分类器，目标 y = (价差 > 0)，直接输出 P(价差 > 0)", 0, True),
-    ("训练用 val 早停，缺省特征由 LightGBM 原生处理 NaN", 0, False),
+    ("决策核心：CatBoost 方向分类器，目标 y = (价差 > 0)，直接输出 P(价差 > 0)", 0, True),
+    ("训练用 val 早停，缺省特征由 CatBoost 原生处理 NaN", 0, False),
     ("展示辅助：分位数回归（q10 / q50 / q90）画价差曲线与置信带，DA/RTPD q50 画价格曲线", 0, False),
-    ("实测方向信号不对称：卖方向命中 71% vs 买方向 58% —— 负价差方向错单是亏损主因", 0, True),
-    ("单边决策规则（经回测校准）：", 0, True),
+    ("实测 CatBoost 优于 LightGBM：test 套利收益 +30%（+1744 → +2243）", 0, True),
+    ("单边决策（无买）：sell 约 33% / hold 约 67% —— 规则经回测校准：", 0, True),
 ], Inches(0.85), Inches(1.5), Inches(11.7), Inches(3.4), base_size=16.5, spacing=9)
 # 规则框
 rule_box = add_rect(slide, Inches(1.35), Inches(4.55), Inches(10.6), Inches(1.35),
@@ -439,39 +440,36 @@ slide = add_slide(prs)
 add_title(slide, "各节点结果：SNLNDRO 是策略主力", 6)
 rows = [
     ["节点", "时段", "交易数(占比)", "交易命中率", "单边策略收益", "实际正价差占比", "价差幅度 |实际|"],
-    ["SNLNDRO", "val",  "1931 (53%)", "69.9%", "+5483", "66.6%", "9.9"],
-    ["",        "test", "958 (61%)",  "68.0%", "+1808", "62.6%", "7.8"],
-    ["CONTROLX", "val", "19 (1%)",    "10.5%", "-409",  "26.3%", "106.6"],
-    ["",         "test", "2 (0%)",    "0%",    "-64",   "33.9%", "213.8"],
-    ["整体",     "val",  "1950",      "69.3%", "+5074", "—",     "—"],
-    ["",         "test", "960",       "67.8%", "+1744", "—",     "—"],
+    ["SNLNDRO", "test", "1018 (65%)", "68.8%", "+2243", "62.6%", "7.8"],
+    ["CONTROLX", "test", "0 (0%)",    "—",    "0",     "33.9%", "213.8"],
+    ["整体",     "val",  "—",          "71.3%", "+6884", "—",     "—"],
+    ["",         "test", "—",          "68.8%", "+2243", "—",     "—"],
 ]
 col_color = [None, None, None, None,
-             [None, GREEN, GREEN, RED, RED, GREEN, GREEN],
+             [None, GREEN, DARK, GREEN, GREEN],
              None, None]
 add_table(slide, rows, Inches(0.55), Inches(1.42), Inches(12.2),
-          [1.5, 0.9, 1.7, 1.6, 1.7, 1.9, 1.5], [0.42, 0.52, 0.52, 0.52, 0.52, 0.52, 0.52],
+          [1.5, 0.9, 1.7, 1.6, 1.7, 1.9, 1.5], [0.42, 0.52, 0.52, 0.52, 0.52],
           size=12, col_align=[PP_ALIGN.CENTER]*7)
-# 合并节点列（SNLNDRO / CONTROLX / 整体）
+# 合并节点列（整体 val/test）
 tbl = slide.shapes[-1].table
-for r1, r2 in [(1, 2), (3, 4), (5, 6)]:
-    tbl.cell(r1, 0).merge(tbl.cell(r2, 0))
-    set_cell(tbl.cell(r1, 0), rows[r1][0], size=13, bold=True, color=NAVY,
-             fill=WHITE if r1 % 2 else LIGHT)
+tbl.cell(3, 0).merge(tbl.cell(4, 0))
+set_cell(tbl.cell(3, 0), "整体", size=13, bold=True, color=NAVY,
+         fill=WHITE if 3 % 2 else LIGHT)
 add_bullets(slide, [
-    ("SNLNDRO：价差系统性偏正（约 2/3 时间 DA>RTPD），预测正价差命中 68–70%，幅度小（±10）风险可控 → 稳定盈利", 0, True),
-    ("CONTROLX：实际正价差仅占 26–34%，模型“预测正价差”信号弱（命中 10%），单边规则下几乎不触发交易 → 主动避开大幅度节点", 0, False),
+    ("SNLNDRO：价差系统性偏正（test 实际正价差 62.6%），预测正价差命中 68.8%，幅度小（±8）风险可控 → 稳定盈利", 0, True),
+    ("CONTROLX：实际正价差仅占 33.9%、幅度高达 ±214，CatBoost 几乎不给出“卖”信号（test 0 笔交易）→ 主动避开大幅度节点", 0, False),
     ("ELCAJNGT 未建模（数据不足）", 0, False),
 ], Inches(0.85), Inches(5.55), Inches(11.7), Inches(1.4), base_size=14, spacing=5)
 
 # ===== 第 7 页：影响因子 =====
 slide = add_slide(prs)
-add_title(slide, "影响因子：DA 价滞后结构主导方向信号", 7)
+add_title(slide, "影响因子：DA 价滞后 + 价差波动主导", 7)
 w, h = add_picture_keep_ratio(slide, feature_chart_png, Inches(0.9), Inches(1.5),
                               Inches(11.6), Inches(4.6))
 add_bullets(slide, [
-    ("历史价格滞后共占 72.8%（其中 DA 价滞后约 60%）—— DA 价是 T-1 已确定的撮合价，对次日价差方向最具预示力", 0, True),
-    ("其次为 D+1 负荷与天气预报（18.3%）、日历（8.2%）、滚动统计（6.9%）、节点（0.7%）", 0, False),
+    ("历史滞后共 44.4%（da_lag2 15.8% + da_lag1 5.5% 领衔）—— 日前撮合价对次日方向最具预示力", 0, True),
+    ("波动统计升至第二（24.1%：spread_std14 13.1%、spread_std7 7.8%）；未来预报 22.9%、日历 9.7%、节点 6.9%", 0, False),
 ], Inches(0.85), Inches(6.2), Inches(11.7), Inches(0.85), base_size=14, spacing=4)
 
 # ===== 第 8 页：基线对比 =====
@@ -480,30 +478,30 @@ add_title(slide, "基线对比：单边策略显著优于全交易", 8)
 w, h = add_picture_keep_ratio(slide, baseline_chart_png, Inches(0.9), Inches(1.5),
                               Inches(11.6), Inches(4.2))
 add_bullets(slide, [
-    ("单边策略 +1744 vs 全交易 -129,655：规避了约 13 万美元的大亏（hold 单笔最多避开 -2,251）", 0, True),
-    ("反向 +129,655 为“全交易取负”的镜像上界，非可执行策略；不交易 0 为下限", 0, False),
+    ("单边策略 +2243 vs 全交易 -128,259：规避了约 12.8 万美元的大亏", 0, True),
+    ("反向 +128,259 为“全交易取负”的镜像上界，非可执行策略；不交易 0 为下限", 0, False),
     ("数值基线（spread 预测）：naive（D-1 同小时直推）MAE = 129.0 → 本模型 MAE = 109.1（提升 15%）", 0, True),
 ], Inches(0.85), Inches(6.0), Inches(11.7), Inches(1.1), base_size=14.5, spacing=4)
 
 # ===== 第 9 页：套利收益曲线 =====
 slide = add_slide(prs)
-add_title(slide, "套利收益曲线：test 累计 +1744", 9)
+add_title(slide, "套利收益曲线：test 累计 +2243", 9)
 add_picture_keep_ratio(slide, ARB_PNG, Inches(1.35), Inches(1.55), Inches(10.6), Inches(4.35))
 add_bullets(slide, [
-    ("test（2026-06 ~ 08，65 天）模拟套利累计 +1744，日均约 +27", 0, True),
-    ("最大单笔亏损 -162（单边规则 + std7 风控下亏损可控）", 0, False),
-    ("val 同时段为正：+5074（2026 H1）—— 双时段验证，避免只在测试集上调参", 0, False),
+    ("test（2026-06 ~ 08，65 天）模拟套利累计 +2243，日均约 +35", 0, True),
+    ("最大单笔亏损 -171（单边规则 + std7 风控下亏损可控）", 0, False),
+    ("val 同时段为正：+6884（2026 H1）—— 双时段验证，避免只在测试集上调参", 0, False),
 ], Inches(0.85), Inches(6.1), Inches(11.7), Inches(1.0), base_size=14.5, spacing=4)
 
 # ===== 第 10 页：评测方法 =====
 slide = add_slide(prs)
 add_title(slide, "评测方法：四层指标，业务优先", 10)
 add_bullets(slide, [
-    ("① 方向准确率（核心业务指标）：整体 62.6%；交易时段命中率 67.8%（只看实际下单样本，更贴业务）", 0, True),
+    ("① 方向准确率（核心业务指标）：整体 63.9%（val 65.3%）；交易时段命中率 68.8%（val 71.3%）（只看实际下单样本，更贴业务）", 0, True),
     ("② 数值精度（参考）：spread MAE 109.1 vs naive 129.0；DA/RTPD MAE、RMSE —— 价差方向才是业务目标", 0, False),
-    ("③ 决策质量：卖 31% / 观望 69%；每类决策平均收益；hold 是否避开了大额亏损", 0, False),
+    ("③ 决策质量：卖 33% / 观望 67%（单边、无买）；每类决策平均收益；hold 是否避开了大额亏损", 0, False),
     ("④ 模拟套利（业务落地）：按预测方向 DA 买卖、RTPD 反向平仓、按真实价差结算 → 总收益、日均、命中率、最大单笔亏损、累计曲线", 0, True),
-    ("⑤ 稳健性：val（2026 H1）+5074 与 test（2026 H2）+1744 双时段均正收益", 0, True),
+    ("⑤ 稳健性：val（2026 H1）+6884 与 test（2026 H2）+2243 双时段均正收益", 0, True),
 ], Inches(0.85), Inches(1.6), Inches(11.7), Inches(5.2), base_size=16.5, spacing=11)
 
 # ===== 第 11 页：增强方向 =====
@@ -525,9 +523,9 @@ add_table(slide, rows, Inches(0.55), Inches(1.45), Inches(12.2),
 slide = add_slide(prs)
 add_title(slide, "已知局限（如实说明）", 12)
 add_bullets(slide, [
-    ("套利利润偏薄：val +5074 / test +1744，日均约 27–60 —— 价差本身难预测，62.6% 方向准确率带来的收益空间有限", 0, True),
+    ("套利利润偏薄：val +6884 / test +2243（test 日均约 +35）—— 价差本身难预测，63.9% 方向准确率带来的收益空间有限", 0, True),
     ("单边牺牲双边机会：只做“卖”（正价差）方向，负价差方向的套利机会被放弃", 0, False),
-    ("交易集中在 SNLNDRO：CONTROLX 在单边规则下几乎不交易", 0, False),
+    ("交易完全集中在 SNLNDRO：CONTROLX 在单边规则下 test 0 笔交易", 0, False),
     ("跨时段仍有漂移：val / test 收益均为正但绝对值不同，市场状态变化仍影响表现", 0, False),
     ("决策阈值基于回测校准（prob > 0.5、std7 ≤ 120），实盘需再验证", 0, False),
     ("ELCAJNGT 未训练；天气按“预报值”假设（若用实测需改滞后特征）", 0, False),
@@ -548,7 +546,7 @@ r2.font.size = Pt(36); r2.font.bold = True; r2.font.color.rgb = WHITE
 
 add_bullets(slide, [
     ("数据 → 特征 → 模型 → 业务评估 → 网页交付，全流程闭环；防泄漏严格、按决策日切分", 0, True),
-    ("方向准确率 62.6%（交易时段 67.8%），模拟套利 val +5074 / test +1744，收益为正、风险可控", 0, True),
+    ("方向准确率 63.9%（交易时段 68.8%），模拟套利 val +6884 / test +2243，收益为正、风险可控", 0, True),
     ("下一步：接入气价 / 新能源出力预测等外部数据，扩展节点与滚动训练", 0, False),
 ], Inches(1.0), Inches(3.0), Inches(11.3), Inches(1.9), base_size=17, spacing=9)
 
