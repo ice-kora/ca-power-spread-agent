@@ -68,6 +68,13 @@ def load_state():
         sub = master[master["node"] == node].sort_values(["date", "hour"])
         price_lk[node] = {c: _pivot(sub, c) for c in PRICE_COLS}
 
+    # 同 zone 关联节点（peer）的价格，用于节点间联动特征（ZP26: CONTROLX <-> SNLNDRO）
+    peer_lk = {}
+    for node in NODES:
+        peer = [m for m in NODES if m != node][0]
+        sub = master[master["node"] == peer].sort_values(["date", "hour"])
+        peer_lk[node] = {f"peer_{c}": _pivot(sub, c) for c in ("da_price", "rtpd_price", "spread")}
+
     # 完整日期范围的 2DA 负荷（原始文件，含未来）
     l2 = pd.read_csv(LOAD2_PATH)
     l2["date"] = pd.to_datetime(l2["Date"].astype(str), format="mixed").dt.date
@@ -88,8 +95,8 @@ def load_state():
         meta = json.load(f)
     models = {name: joblib.load(os.path.join(MODELS, os.path.basename(p)))
               for name, p in meta["models"].items()}
-    return {"master": master, "price_lk": price_lk, "load2_lk": load2_lk,
-            "weather_lk": weather_lk, "meta": meta, "models": models}
+    return {"master": master, "price_lk": price_lk, "peer_lk": peer_lk,
+            "load2_lk": load2_lk, "weather_lk": weather_lk, "meta": meta, "models": models}
 
 
 def get_state():
@@ -102,17 +109,44 @@ def get_state():
 def build_features_for_day(state, node, target_date):
     """构造单个目标日 24 行特征 DataFrame（列顺序 = feature_cols.json 的 features）。"""
     price_lk = state["price_lk"][node]
+    peer_lk = state["peer_lk"][node]
     wlk = state["weather_lk"][ZONE_OF_NODE[node]]
     load2_lk = state["load2_lk"]
     D = target_date - timedelta(days=1)
+    d1 = D - timedelta(days=1)
+
+    # 预取 D-1 的 24h 序列（日内形态 / 日均负荷）
+    def _day_series(lk, col):
+        if d1 in lk[col].index:
+            return lk[col].loc[d1]
+        return pd.Series(dtype=float)
+
+    sp_d1 = _day_series(price_lk, "spread")
+    la_d1 = _day_series(price_lk, "load_actual")
+    day_std1 = float(sp_d1.std()) if sp_d1.notna().sum() > 1 else np.nan
+    day_max1 = float(sp_d1.max()) if sp_d1.notna().any() else np.nan
+    day_range1 = float(sp_d1.max() - sp_d1.min()) if sp_d1.notna().sum() > 1 else np.nan
+    load_day_mean1 = float(la_d1.mean()) if la_d1.notna().any() else np.nan
+
     rows = []
     for h in HOURS:
         getp = lambda col, day: _get_col(price_lk, col, day, h)  # noqa: E731
         getw = lambda col, day: _get_col(wlk, col, day, h)      # noqa: E731
-        vals = [getp("spread", D - timedelta(days=k)) for k in range(1, 8)]
-        vals = [v for v in vals if pd.notna(v)]
-        mean7 = float(np.mean(vals)) if vals else np.nan
-        std7 = float(np.std(vals)) if len(vals) > 1 else np.nan
+        getpeer = lambda col, day: _get_col(peer_lk, col, day, h)  # noqa: E731
+
+        def _agg(col, days):
+            vals = [getp(col, D - timedelta(days=k)) for k in range(1, days + 1)]
+            return [v for v in vals if pd.notna(v)]
+
+        v7 = _agg("spread", 7)
+        v14 = _agg("spread", 14)
+        v30 = _agg("spread", 30)
+        mean7 = float(np.mean(v7)) if v7 else np.nan
+        std7 = float(np.std(v7)) if len(v7) > 1 else np.nan
+        mean14 = float(np.mean(v14)) if v14 else np.nan
+        std14 = float(np.std(v14)) if len(v14) > 1 else np.nan
+        mean30 = float(np.mean(v30)) if v30 else np.nan
+        std30 = float(np.std(v30)) if len(v30) > 1 else np.nan
 
         # load_peak_flag：D+1 当天 2DA 负荷是否峰值（缺失则 NaN）
         peak = np.nan
@@ -135,7 +169,18 @@ def build_features_for_day(state, node, target_date):
             "spread_lag7": getp("spread", D - timedelta(days=7)),
             "spread_mean7": mean7,
             "spread_std7": std7,
+            "spread_mean14": mean14,
+            "spread_std14": std14,
+            "spread_mean30": mean30,
+            "spread_std30": std30,
             "load_actual_lag1": getp("load_actual", D - timedelta(days=1)),
+            "load_actual_day_mean_lag1": load_day_mean1,
+            "peer_spread_lag1": getpeer("peer_spread", D - timedelta(days=1)),
+            "peer_da_lag1": getpeer("peer_da_price", D - timedelta(days=1)),
+            "peer_rtpd_lag1": getpeer("peer_rtpd_price", D - timedelta(days=1)),
+            "spread_day_std_lag1": day_std1,
+            "spread_day_range_lag1": day_range1,
+            "spread_day_max_lag1": day_max1,
             "load_2da_next": _get_pivot(load2_lk, target_date, h),
             "t2m_next": getw("t2m", target_date),
             "ssrd_next": getw("ssrd", target_date),
