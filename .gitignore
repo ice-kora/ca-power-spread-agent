@@ -2,3 +2,5 @@ code/data/*
 code/models/*
 __pycache__/
 *.pyc
+~$*
+code/tmp/*

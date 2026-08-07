@@ -19,6 +19,7 @@
 """
 import os
 import json
+import joblib
 import numpy as np
 import pandas as pd
 import lightgbm as lgb
@@ -68,8 +69,9 @@ def train_one(df, target_col, alpha, name):
         eval_set=[(df.loc[df.split == "val", FEATURES], df.loc[df.split == "val", target_col])],
         callbacks=[lgb.early_stopping(80, verbose=False)],
     )
-    path = os.path.join(MODELS, f"{name}.txt")
-    model.booster_.save_model(path)
+    # 注意：LightGBM save_model 在 Windows 中文路径下不可写，改用 joblib 保存模型对象
+    path = os.path.join(MODELS, f"{name}.pkl")
+    joblib.dump(model, path)
     return model, path
 
 
@@ -105,15 +107,18 @@ def main():
 
     # ---- 主目标：spread 分位数 ----
     models = {}
+    saved = {}
     for q in (0.1, 0.5, 0.9):
         m, p = train_one(df, "spread_next", q, f"lgbm_spread_q{q:g}")
-        models[f"spread_q{q:g}"] = p
+        models[f"spread_q{q:g}"] = m
+        saved[f"spread_q{q:g}"] = p
         print(f"trained spread q{q} best_iter={m.best_iteration_}")
 
     # ---- 展示辅助：DA / RTPD q50 点预测 ----
     for col, name in [("da_price_next", "lgbm_da_q0.5"), ("rtpd_price_next", "lgbm_rtpd_q0.5")]:
         m, p = train_one(df, col, 0.5, name)
-        models[name] = p
+        models[name] = m
+        saved[name] = p
         print(f"trained {col} best_iter={m.best_iteration_}")
 
     # ---- 测试集预测（契约输出）----
@@ -144,7 +149,7 @@ def main():
         json.dump({
             "features": FEATURES,
             "node_categories": [str(x) for x in node_labels],
-            "models": models,
+            "models": {k: os.path.basename(v) for k, v in saved.items()},
         }, f, ensure_ascii=False, indent=2)
 
     # ---- 简版测试集指标 ----

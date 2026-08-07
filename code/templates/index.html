@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CA-ISO 电价价差预测</title>
+<!--
+  ECharts 通过 CDN 引入：
+  https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js
+  离线使用时需把 echarts.min.js 下载到 code/static/ 目录，并把下面的 src
+  改为本地路径，例如 <script src="{{ url_for('static', filename='echarts.min.js') }}"></script>
+  或相对路径 <script src="/static/echarts.min.js"></script>。
+-->
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1420;
+    --panel: #171f31;
+    --panel-2: #1d2740;
+    --border: #2b3854;
+    --text: #e7edf7;
+    --text-dim: #94a3bd;
+    --accent: #4f8df9;
+    --buy: #22c55e;
+    --sell: #ef4444;
+    --hold: #8b94a5;
+    --warn-bg: #3a2f14;
+    --warn-border: #b8860b;
+    --warn-text: #f5d78e;
+    --err-bg: #3a1a1d;
+    --err-border: #ef4444;
+    --err-text: #f8b4b4;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, -apple-system, sans-serif;
+    line-height: 1.55;
+    font-size: 15px;
+  }
+  .wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px 16px 48px;
+  }
+
+  /* ===== 标题区 ===== */
+  header {
+    padding: 8px 2px 14px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  header h1 {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: .5px;
+  }
+  header .sub {
+    margin-top: 6px;
+    color: var(--text-dim);
+    font-size: 14px;
+  }
+  header .sub code {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0 5px;
+    color: #bcd0f0;
+  }
+
+  /* ===== 提示条 ===== */
+  .notice {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    border-radius: var(--radius);
+    color: var(--warn-text);
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    font-size: 13.5px;
+  }
+  .notice .tag {
+    flex: 0 0 auto;
+    background: var(--warn-border);
+    color: #1c1505;
+    font-weight: 700;
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 5px;
+    margin-top: 2px;
+  }
+  .notice p + p { margin-top: 4px; }
+  .notice b { color: #ffd98a; }
+
+  /* ===== 输入区 ===== */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: flex-end;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .controls .field { display: flex; flex-direction: column; gap: 6px; }
+  .controls label {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    font-weight: 600;
+    letter-spacing: .5px;
+  }
+  .controls select,
+  .controls input[type="date"] {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 9px 11px;
+    font-size: 14px;
+    min-width: 210px;
+    color-scheme: dark;
+  }
+  .controls select:focus,
+  .controls input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .controls button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    padding: 10px 26px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter .15s, opacity .15s;
+    min-height: 40px;
+  }
+  .controls button:hover:not(:disabled) { filter: brightness(1.12); }
+  .controls button:disabled { opacity: .55; cursor: not-allowed; }
+
+  /* ===== 错误条 ===== */
+  #error-box {
+    display: none;
+    background: var(--err-bg);
+    border: 1px solid var(--err-border);
+    color: var(--err-text);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    font-size: 13.5px;
+  }
+  #error-box.show { display: block; }
+  #error-box b { color: #ffb4b4; }
+
+  /* ===== 面板 ===== */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .panel h2 {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: #dbe5f5;
+    border-left: 3px solid var(--accent);
+    padding-left: 10px;
+  }
+  .panel h2 .meta {
+    font-weight: 400;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    margin-left: 8px;
+  }
+
+  /* ===== 图表 ===== */
+  #chart { width: 100%; height: 430px; }
+  .chart-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 430px;
+    color: var(--text-dim);
+    font-size: 14px;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+  }
+  .chart-hint { display: none; }
+
+  /* ===== 表格 ===== */
+  .table-wrap { overflow-x: auto; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    min-width: 560px;
+  }
+  th, td {
+    padding: 8px 10px;
+    text-align: right;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  th:first-child, td:first-child { text-align: center; }
+  th { color: var(--text-dim); font-weight: 600; font-size: 12.5px; background: #141b2c; }
+  tbody tr:hover { background: rgba(79, 141, 249, .06); }
+  td.num { font-variant-numeric: tabular-nums; }
+  .badge {
+    display: inline-block;
+    min-width: 46px;
+    text-align: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 700;
+  }
+  .badge.buy  { background: rgba(34,197,94,.16);  color: #4ade80; border: 1px solid rgba(34,197,94,.45); }
+  .badge.sell { background: rgba(239,68,68,.16);  color: #f87171; border: 1px solid rgba(239,68,68,.45); }
+  .badge.hold { background: rgba(139,148,165,.14); color: #b6bfce; border: 1px solid rgba(139,148,165,.45); }
+  tr.empty td { text-align: center; color: var(--text-dim); padding: 28px 0; }
+
+  /* ===== 回测卡 ===== */
+  #backtest-card { display: none; }
+  #backtest-card.show { display: block; }
+  .bt-grid { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; }
+  .bt-score {
+    font-size: 40px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: var(--buy);
+  }
+  .bt-score.mid { color: var(--hold); }
+  .bt-score.low { color: var(--sell); }
+  .bt-desc { flex: 1; min-width: 260px; color: var(--text-dim); font-size: 13.5px; }
+  .bt-desc p + p { margin-top: 6px; }
+
+  /* ===== 页脚 ===== */
+  footer {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 12.5px;
+    margin-top: 8px;
+  }
+
+  @media (max-width: 640px) {
+    .controls { flex-direction: column; align-items: stretch; }
+    .controls select,
+    .controls input[type="date"] { min-width: 100%; width: 100%; }
+    .controls button { width: 100%; }
+    #chart { height: 320px; }
+    header h1 { font-size: 20px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ===== 标题区 ===== -->
+  <header>
+    <h1>CA-ISO 电价价差预测</h1>
+    <p class="sub">
+      价差 = 日前电价 DA − 实时电价 RTPD（单位：$/MWh）。
+      价差为负（RTPD 更高）→ <span style="color:var(--buy)">日前买、实时卖</span>；
+      价差为正 → <span style="color:var(--sell)">日前卖、实时买</span>；
+      把握不足 → <span style="color:var(--hold)">观望</span>。
+      模型输入：<code>节点日前/实时价格</code>、<code>系统负荷</code>、<code>分区天气</code>。
+    </p>
+  </header>
+
+  <!-- ===== 数据边界提示条 ===== -->
+  <section class="notice" role="note">
+    <span class="tag">数据边界</span>
+    <div>
+      <p>可预测目标日期至 <b>2026-08-06</b>（受训练数据截至 <b>2026-08-05</b> 限制），日期选择框已按此范围约束。</p>
+      <p>选择<b>已过去的日期</b>时，页面会同时展示预测与真实值对比，并给出<b>方向准确率</b>（回测）。</p>
+    </div>
+  </section>
+
+  <!-- ===== 输入区 ===== -->
+  <section class="controls">
+    <div class="field">
+      <label for="node">节点</label>
+      <select id="node">
+        <option value="SNLNDRO_1_N001" selected>SNLNDRO_1_N001（ZP26）</option>
+        <option value="CONTROLX_1_N001">CONTROLX_1_N001（ZP26）</option>
+        <option value="ELCAJNGT_7_N001">ELCAJNGT_7_N001（SP15）</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="date">目标日期</label>
+      <input type="date" id="date" min="2025-10-02" max="2026-08-06" value="2026-08-06">
+    </div>
+    <button id="btn-predict" type="button">预 测</button>
+  </section>
+
+  <!-- ===== 错误提示 ===== -->
+  <div id="error-box" role="alert" aria-live="assertive"></div>
+
+  <!-- ===== 图表区 ===== -->
+  <section class="panel">
+    <h2>预测图 <span class="meta" id="chart-meta"></span></h2>
+    <div id="chart"></div>
+    <div id="chart-empty" class="chart-empty">点击「预测」获取结果；若页面始终停留在此，请确认后端已启动。</div>
+  </section>
+
+  <!-- ===== 买卖建议表 ===== -->
+  <section class="panel">
+    <h2>买卖建议 <span class="meta">价差预测(q50) 与区间 [q10, q90]（$/MWh）</span></h2>
+    <div class="table-wrap">
+      <table id="suggest-table">
+        <thead>
+          <tr>
+            <th>小时</th>
+            <th>价差预测 (q50)</th>
+            <th>区间 [q10, q90]</th>
+            <th>建议</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="empty"><td colspan="4">请选择节点与目标日期，点击「预测」</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== 回测信息卡 ===== -->
+  <section class="panel" id="backtest-card">
+    <h2>回测信息 <span class="meta" id="bt-meta"></span></h2>
+    <div class="bt-grid">
+      <div>
+        <div style="font-size:12.5px;color:var(--text-dim);font-weight:600">方向准确率</div>
+        <div class="bt-score" id="bt-acc">—</div>
+      </div>
+      <div class="bt-desc">
+        <p id="bt-desc-text"></p>
+        <p>方向准确率 = 预测价差符号与真实价差符号一致的小时占比（含零价差与“观望”小时视为方向中性，不计入）。数值越高，说明模型对该日买卖方向的判断越可靠。</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>CA-ISO 电价价差预测 · 前端模板（数据接口 /api/predict）</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var API = '/api/predict';
+  var DECISION_CN = { buy: '买', sell: '卖', hold: '观望' };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var nodeSel = $('node');
+  var dateInput = $('date');
+  var btn = $('btn-predict');
+  var errorBox = $('error-box');
+  var chartEl = $('chart');
+  var chartEmpty = $('chart-empty');
+  var chartMeta = $('chart-meta');
+  var tableBody = $('suggest-table').querySelector('tbody');
+  var btCard = $('backtest-card');
+  var btAcc = $('bt-acc');
+  var btMeta = $('bt-meta');
+  var btDesc = $('bt-desc-text');
+
+  var chart = null;
+  var lastData = null;
+
+  /* ---------- 工具函数 ---------- */
+
+  // 容忍字段缺失：把数组规整到指定长度，缺位补 null
+  function normalizeSeries(arr, n) {
+    if (!Array.isArray(arr)) {
+      var out = [];
+      for (var i = 0; i < n; i++) out.push(null);
+      return out;
+    }
+    var res = arr.slice(0, n);
+    while (res.length < n) res.push(null);
+    return res;
+  }
+
+  function makeHours(n) {
+    var out = [];
+    for (var i = 1; i <= n; i++) out.push(i);
+    return out;
+  }
+
+  function fmt(v) {
+    if (v === null || v === undefined || isNaN(v)) return '—';
+    var x = Number(v);
+    if (isNaN(x)) return '—';
+    return (x >= 0 ? '+' : '') + x.toFixed(2);
+  }
+
+  function decisionLabel(i, data) {
+    var lbl = data && data.decision_label && data.decision_label[i];
+    if (lbl) return lbl;
+    var d = data && data.decision && data.decision[i];
+    if (d && DECISION_CN[d]) return DECISION_CN[d];
+    return '观望';
+  }
+
+  function decisionClass(label) {
+    if (label === '买') return 'buy';
+    if (label === '卖') return 'sell';
+    return 'hold';
+  }
+
+  function showError(msg, isConnect) {
+    errorBox.innerHTML = '';
+    var b = document.createElement('b');
+    b.textContent = (isConnect ? '后端未启动' : '错误') + '：';
+    errorBox.appendChild(b);
+    errorBox.appendChild(document.createTextNode(' ' + msg));
+    errorBox.classList.add('show');
+  }
+
+  function hideError() { errorBox.classList.remove('show'); }
+
+  function setLoading(on) {
+    if (on) {
+      btn.disabled = true;
+      btn.textContent = '预测中…';
+    } else {
+      btn.disabled = false;
+      btn.textContent = '预 测';
+    }
+  }
+
+  /* ---------- ECharts ---------- */
+
+  function initChart() {
+    if (typeof echarts === 'undefined') {
+      chartEmpty.style.display = 'flex';
+      chartEmpty.textContent = 'ECharts 未能从 CDN 加载。请联网，或将 echarts.min.js 下载到 code/static/ 并改为本地引入。';
+      return false;
+    }
+    chart = echarts.init(chartEl, null, { renderer: 'canvas' });
+    window.addEventListener('resize', function () {
+      if (chart) chart.resize();
+    });
+    return true;
+  }
+
+  function chartColors() {
+    return {
+      da: '#4f8df9',
+      rtpd: '#f0a63c',
+      spread: '#c084fc',
+      band: 'rgba(192,132,252,0.16)',
+      daAct: '#60a5fa',
+      rtpdAct: '#fdba74',
+      spreadAct: '#f87171'
+    };
+  }
+
+  function renderChart(labels, da, rtpd, q10, q50, q90, data) {
+    if (!chart) return;
+    var c = chartColors();
+    var hasActual = !!(data && data.has_actual);
+    var daAct = hasActual ? normalizeSeries(data.da_actual, labels.length) : null;
+    var rtpdAct = hasActual ? normalizeSeries(data.rtpd_actual, labels.length) : null;
+    var spreadAct = hasActual ? normalizeSeries(data.spread_actual, labels.length) : null;
+
+    // q10–q90 置信带：利用堆叠面积，第二条叠加 (q90-q10) 填充区间
+    var bandFill = q10.map(function (v, i) {
+      var a = q10[i], b = q90[i];
+      if (a === null || a === undefined || b === null || b === undefined) return null;
+      return b - a;
+    });
+
+    var series = [];
+    series.push({
+      name: 'DA 预测', type: 'line', data: da,
+      symbol: 'none', lineStyle: { width: 2.5, color: c.da },
+      itemStyle: { color: c.da }, z: 3
+    });
+    series.push({
+      name: 'RTPD 预测', type: 'line', data: rtpd,
+      symbol: 'none', lineStyle: { width: 2.5, color: c.rtpd },
+      itemStyle: { color: c.rtpd }, z: 3
+    });
+    series.push({
+      name: '区间下界(q10)', type: 'line', data: q10,
+      stack: 'spread-band', yAxisIndex: 1,
+      lineStyle: { opacity: 0 }, symbol: 'none',
+      silent: true, tooltip: { show: false }, emphasis: { disabled: true }, z: 1
+    });
+    series.push({
+      name: 'q10–q90 置信区间', type: 'line', data: bandFill,
+      stack: 'spread-band', yAxisIndex: 1,
+      lineStyle: { opacity: 0 }, symbol: 'none',
+      silent: true, tooltip: { show: false }, emphasis: { disabled: true },
+      areaStyle: { color: c.band }, z: 1
+    });
+    series.push({
+      name: '价差预测(q50)', type: 'line', data: q50, yAxisIndex: 1,
+      symbol: 'circle', symbolSize: 4,
+      lineStyle: { width: 2, color: c.spread },
+      itemStyle: { color: c.spread }, z: 3
+    });
+    if (hasActual) {
+      series.push({
+        name: 'DA 实际', type: 'line', data: daAct,
+        symbol: 'none', lineStyle: { width: 2, type: 'dashed', color: c.daAct },
+        itemStyle: { color: c.daAct }, z: 2
+      });
+      series.push({
+        name: 'RTPD 实际', type: 'line', data: rtpdAct,
+        symbol: 'none', lineStyle: { width: 2, type: 'dashed', color: c.rtpdAct },
+        itemStyle: { color: c.rtpdAct }, z: 2
+      });
+      series.push({
+        name: '价差实际', type: 'line', data: spreadAct, yAxisIndex: 1,
+        symbol: 'none', lineStyle: { width: 1.5, type: 'dotted', color: c.spreadAct },
+        itemStyle: { color: c.spreadAct }, z: 2
+      });
+    }
+
+    var legendData = ['DA 预测', 'RTPD 预测', '价差预测(q50)'];
+    if (hasActual) {
+      legendData.push('DA 实际', 'RTPD 实际', '价差实际');
+    }
+
+    var option = {
+      backgroundColor: 'transparent',
+      color: [c.da, c.rtpd, c.spread, c.daAct, c.rtpdAct, c.spreadAct],
+      legend: { data: legendData, type: 'scroll', top: 0, textStyle: { color: '#c4d0e5' } },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'cross', label: { backgroundColor: '#2b3854' } },
+        backgroundColor: '#1d2740',
+        borderColor: '#2b3854',
+        textStyle: { color: '#e7edf7' },
+        formatter: function (params) {
+          if (!params || !params.length) return '';
+          var i = params[0].dataIndex;
+          var h = labels[i];
+          var html = '<div style="font-weight:700;margin-bottom:4px">' + h + '</div>';
+          html += 'DA 预测：' + fmt(da[i]) + '<br>';
+          html += 'RTPD 预测：' + fmt(rtpd[i]) + '<br>';
+          html += '价差预测(q50)：' + fmt(q50[i]) + '<br>';
+          html += '区间[q10, q90]：[' + fmt(q10[i]) + ', ' + fmt(q90[i]) + ']<br>';
+          if (hasActual) {
+            html += 'DA 实际：' + fmt(daAct[i]) + '<br>';
+            html += 'RTPD 实际：' + fmt(rtpdAct[i]) + '<br>';
+            html += '价差实际：' + fmt(spreadAct[i]) + '<br>';
+          }
+          html += '建议：' + decisionLabel(i, data);
+          return html;
+        }
+      },
+      grid: { left: 58, right: 58, top: 42, bottom: 34, containLabel: true },
+      xAxis: {
+        type: 'category', boundaryGap: false,
+        data: labels,
+        axisLine: { lineStyle: { color: '#2b3854' } },
+        axisLabel: { color: '#94a3bd' }
+      },
+      yAxis: [
+        {
+          type: 'value', name: '价格 ($/MWh)',
+          nameTextStyle: { color: '#94a3bd' },
+          axisLabel: { color: '#94a3bd' },
+          splitLine: { lineStyle: { color: '#232e47' } }
+        },
+        {
+          type: 'value', name: '价差 ($/MWh)',
+          nameTextStyle: { color: '#94a3bd' },
+          axisLabel: { color: '#94a3bd' },
+          splitLine: { show: false }
+        }
+      ],
+      series: series
+    };
+
+    chart.setOption(option, true);
+  }
+
+  /* ---------- 表格 ---------- */
+
+  function renderTable(labels, q50, q10, q90, data) {
+    tableBody.innerHTML = '';
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < labels.length; i++) {
+      var tr = document.createElement('tr');
+      var lbl = decisionLabel(i, data);
+      var cls = decisionClass(lbl);
+
+      var tdH = document.createElement('td');
+      tdH.textContent = labels[i];
+
+      var tdQ = document.createElement('td');
+      tdQ.className = 'num';
+      tdQ.textContent = fmt(q50[i]);
+
+      var tdInt = document.createElement('td');
+      tdInt.className = 'num';
+      tdInt.textContent = '[' + fmt(q10[i]) + ', ' + fmt(q90[i]) + ']';
+
+      var tdD = document.createElement('td');
+      var badge = document.createElement('span');
+      badge.className = 'badge ' + cls;
+      badge.textContent = lbl;
+
+      tdD.appendChild(badge);
+      tr.appendChild(tdH);
+      tr.appendChild(tdQ);
+      tr.appendChild(tdInt);
+      tr.appendChild(tdD);
+      frag.appendChild(tr);
+    }
+    tableBody.appendChild(frag);
+  }
+
+  /* ---------- 回测卡 ---------- */
+
+  function renderBacktest(data, nodeLabel, dateStr) {
+    btCard.classList.remove('show');
+    var hasActual = !!(data && data.has_actual);
+    if (!hasActual) return;
+    var acc = (data.direction_accuracy === null || data.direction_accuracy === undefined)
+      ? null : Number(data.direction_accuracy);
+
+    btCard.classList.add('show');
+    btMeta.textContent = nodeLabel + ' · ' + dateStr + '（已过去，预测与真实值对比）';
+    if (acc === null || isNaN(acc)) {
+      btAcc.textContent = '—';
+      btAcc.className = 'bt-score';
+      btDesc.textContent = '该日已存在真实电价，但暂未返回方向准确率（direction_accuracy 为 null）。';
+    } else {
+      btAcc.textContent = (acc * 100).toFixed(1) + '%';
+      btAcc.className = 'bt-score' + (acc >= 0.65 ? '' : (acc >= 0.5 ? ' mid' : ' low'));
+      btDesc.textContent = '该日 24 小时预测与真实价差的方向一致率为 ' + (acc * 100).toFixed(1) + '%。';
+    }
+  }
+
+  /* ---------- 主流程 ---------- */
+
+  function clearResults() {
+    chartMeta.textContent = '';
+    btCard.classList.remove('show');
+    if (chart) {
+      chart.clear();
+      chartEmpty.style.display = 'none';
+    }
+  }
+
+  function renderAll(data) {
+    var n = 24;
+    var hours = (Array.isArray(data.hours) && data.hours.length) ? data.hours : makeHours(n);
+    var labels = hours.map(function (h) { return h + '时'; });
+
+    var da = normalizeSeries(data.da_pred, labels.length);
+    var rtpd = normalizeSeries(data.rtpd_pred, labels.length);
+    var q10 = normalizeSeries(data.spread_q10, labels.length);
+    var q50 = normalizeSeries(data.spread_q50, labels.length);
+    var q90 = normalizeSeries(data.spread_q90, labels.length);
+
+    if (chart) chartEmpty.style.display = 'none';
+    chartMeta.textContent = (data.node || '—') + ' · ' + (data.target_date || '—') +
+      (data.has_actual ? ' · 回测' : ' · 预测');
+
+    renderChart(labels, da, rtpd, q10, q50, q90, data);
+    renderTable(labels, q50, q10, q90, data);
+    renderBacktest(data, data.node || '', data.target_date || '');
+  }
+
+  function doPredict() {
+    var node = nodeSel.value;
+    var date = dateInput.value;
+    if (!node) { showError('请选择节点', false); return; }
+    if (!date) { showError('请选择目标日期', false); return; }
+
+    hideError();
+    setLoading(true);
+    clearResults();
+
+    fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ node: node, target_date: date })
+    })
+      .then(function (resp) {
+        return resp.json().catch(function () {
+          throw new Error('HTTP ' + resp.status + '：接口返回了非 JSON 内容');
+        });
+      })
+      .then(function (data) {
+        if (!data || data.ok === false) {
+          throw new Error((data && data.error) || '接口返回未知错误');
+        }
+        renderAll(data);
+      })
+      .catch(function (err) {
+        var isConnect = (err instanceof TypeError) || /Failed to fetch|NetworkError|Network request failed|load failed/i.test(String(err && err.message));
+        if (isConnect) {
+          showError('无法连接 ' + API + '。请先启动后端：在项目根目录运行 python app.py，再刷新页面。', true);
+        } else {
+          showError(err && err.message ? err.message : '请求失败，请稍后重试。', false);
+        }
+      })
+      .finally(function () {
+        setLoading(false);
+      });
+  }
+
+  /* ---------- 事件与初始化 ---------- */
+
+  btn.addEventListener('click', doPredict);
+
+  // 页面加载：初始化为默认值并自动请求一次（后端未启动时给出明确提示）
+  var ok = initChart();
+  if (ok) {
+    chartEmpty.style.display = 'none';
+  }
+  doPredict();
+})();
+</script>
+</body>
+</html>

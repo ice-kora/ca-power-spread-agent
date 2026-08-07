@@ -16,10 +16,10 @@ D+1 的 2DA 负荷与天气为预报值，直接作特征；缺失时保留 NaN�
 """
 import os
 import json
+import joblib
 from datetime import timedelta
 import numpy as np
 import pandas as pd
-import lightgbm as lgb
 from flask import Flask, jsonify, render_template, request
 from pandas.tseries.holiday import USFederalHolidayCalendar
 
@@ -86,7 +86,7 @@ def load_state():
 
     with open(FEAT_COLS_PATH, "r", encoding="utf-8") as f:
         meta = json.load(f)
-    models = {name: lgb.Booster(model_file=os.path.join(MODELS, os.path.basename(p)))
+    models = {name: joblib.load(os.path.join(MODELS, os.path.basename(p)))
               for name, p in meta["models"].items()}
     return {"master": master, "price_lk": price_lk, "load2_lk": load2_lk,
             "weather_lk": weather_lk, "meta": meta, "models": models}
