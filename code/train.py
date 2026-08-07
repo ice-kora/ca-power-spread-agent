@@ -22,6 +22,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import lightgbm as lgb
+from catboost import CatBoostClassifier
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "code", "data")
@@ -72,13 +73,16 @@ def train_reg(df, target_col, alpha, name):
     return model, path
 
 
-def train_clf(df, name="lgbm_spread_clf"):
-    """方向分类器：目标 y = (spread_next > 0)，输出 P(spread>0)。"""
+def train_clf(df, name="catboost_spread_clf"):
+    """方向分类器（CatBoost）：目标 y = (spread_next > 0)，输出 P(spread>0)。
+    实测 CatBoost 在同特征下方向准确率与套利收益均优于 LightGBM（ordered boosting 对小样本+噪声更稳）。"""
     y = (df["spread_next"] > 0).astype(int)
-    model = lgb.LGBMClassifier(**{**LGB_PARAMS, "objective": "binary"})
+    model = CatBoostClassifier(iterations=800, learning_rate=0.05, depth=6,
+                               l2_leaf_reg=3, loss_function="Logloss",
+                               random_seed=42, verbose=0)
     model.fit(df.loc[df.split == "train", FEATURES], y.loc[df.split == "train"],
-              eval_set=[(df.loc[df.split == "val", FEATURES], y.loc[df.split == "val"])],
-              callbacks=[lgb.early_stopping(80, verbose=False)])
+              eval_set=(df.loc[df.split == "val", FEATURES], y.loc[df.split == "val"]),
+              early_stopping_rounds=80)
     path = os.path.join(MODELS, f"{name}.pkl")
     joblib.dump(model, path)
     return model, path
@@ -104,7 +108,7 @@ def main():
 
     # ---- 方向分类器（决策核心）----
     clf, clf_path = train_clf(df)
-    print("trained direction classifier best_iter=%s" % clf.best_iteration_)
+    print("trained direction classifier (CatBoost) best_iter=%s" % clf.get_best_iteration())
 
     # ---- 展示用回归：spread 分位数 + DA/RTPD q50 ----
     models, saved = {}, {}
@@ -116,8 +120,8 @@ def main():
         m, p = train_reg(df, col, 0.5, name)
         models[name] = m
         saved[name] = p
-    models["lgbm_spread_clf"] = clf
-    saved["lgbm_spread_clf"] = clf_path
+    models["catboost_spread_clf"] = clf
+    saved["catboost_spread_clf"] = clf_path
 
     # ---- 测试集预测（契约输出）----
     X_test = test[FEATURES]

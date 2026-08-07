@@ -205,8 +205,8 @@ def predict_day(state, node, target_date):
     X = X[feat_cols]
 
     models = state["models"]
-    # 方向分类器（决策核心）：P(spread>0)。单边策略：只在预测正价差且波动可控时卖，其余观望。
-    clf = models["lgbm_spread_clf"]
+    # 方向分类器（决策核心，CatBoost）：P(spread>0)。单边策略：只在预测正价差且波动可控时卖，其余观望。
+    clf = models["catboost_spread_clf"]
     prob = clf.predict_proba(X)[:, 1]
     std7 = X["spread_std7"].fillna(99).values
     th = meta.get("decision_thresholds", {"prob_th": 0.5, "std_th": 120.0})
