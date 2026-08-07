@@ -145,7 +145,7 @@ def build_master(nodes):
 
 if __name__ == "__main__":
     os.makedirs(DATA, exist_ok=True)
-    nodes = ["SNLNDRO_1_N001", "CONTROLX_1_N001"]  # MVP：ZP26 两节点
+    nodes = ["SNLNDRO_1_N001", "CONTROLX_1_N001", "ELCAJNGT_7_N001"]
     m = build_master(nodes)
     m.to_csv(OUT, index=False)
     print("rows:", len(m))

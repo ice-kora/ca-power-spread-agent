@@ -31,8 +31,10 @@ FEAT_COLS_PATH = os.path.join(MODELS, "feature_cols.json")
 LOAD2_PATH = os.path.join(ROOT, "load_CA_ISO_TAC_2DA.csv")
 WEATHER_PATH = os.path.join(ROOT, "zone_weather_hourly.csv")
 
-NODES = ["SNLNDRO_1_N001", "CONTROLX_1_N001"]  # 训练覆盖的节点
-ZONE_OF_NODE = {"SNLNDRO_1_N001": "ZP26", "CONTROLX_1_N001": "ZP26"}
+MAIN_NODES = ["SNLNDRO_1_N001", "CONTROLX_1_N001"]
+ELCA_NODE = "ELCAJNGT_7_N001"
+NODES = MAIN_NODES + [ELCA_NODE]
+ZONE_OF_NODE = {"SNLNDRO_1_N001": "ZP26", "CONTROLX_1_N001": "ZP26", "ELCAJNGT_7_N001": "SP15"}
 PRICE_COLS = ["da_price", "rtpd_price", "spread", "load_actual"]
 WEATHER_COLS = ["t2m", "ssrd", "wind100"]
 HOURS = list(range(1, 25))
@@ -68,10 +70,10 @@ def load_state():
         sub = master[master["node"] == node].sort_values(["date", "hour"])
         price_lk[node] = {c: _pivot(sub, c) for c in PRICE_COLS}
 
-    # 同 zone 关联节点（peer）的价格，用于节点间联动特征（ZP26: CONTROLX <-> SNLNDRO）
+    # 同 zone 关联节点（peer）的价格（ZP26: CONTROLX <-> SNLNDRO）；ELCAJNGT 无 peer
     peer_lk = {}
-    for node in NODES:
-        peer = [m for m in NODES if m != node][0]
+    for node in MAIN_NODES:
+        peer = [m for m in MAIN_NODES if m != node][0]
         sub = master[master["node"] == peer].sort_values(["date", "hour"])
         peer_lk[node] = {f"peer_{c}": _pivot(sub, c) for c in ("da_price", "rtpd_price", "spread")}
 
@@ -95,8 +97,11 @@ def load_state():
         meta = json.load(f)
     models = {name: joblib.load(os.path.join(MODELS, os.path.basename(p)))
               for name, p in meta["models"].items()}
+    models_elca = {name: joblib.load(os.path.join(MODELS, os.path.basename(p)))
+                   for name, p in meta.get("elca_models", {}).items()}
     return {"master": master, "price_lk": price_lk, "peer_lk": peer_lk,
-            "load2_lk": load2_lk, "weather_lk": weather_lk, "meta": meta, "models": models}
+            "load2_lk": load2_lk, "weather_lk": weather_lk, "meta": meta,
+            "models": models, "models_elca": models_elca}
 
 
 def get_state():
@@ -109,7 +114,7 @@ def get_state():
 def build_features_for_day(state, node, target_date):
     """构造单个目标日 24 行特征 DataFrame（列顺序 = feature_cols.json 的 features）。"""
     price_lk = state["price_lk"][node]
-    peer_lk = state["peer_lk"][node]
+    peer_lk = state["peer_lk"].get(node)  # ELCAJNGT 无 peer -> None
     wlk = state["weather_lk"][ZONE_OF_NODE[node]]
     load2_lk = state["load2_lk"]
     D = target_date - timedelta(days=1)
@@ -132,7 +137,7 @@ def build_features_for_day(state, node, target_date):
     for h in HOURS:
         getp = lambda col, day: _get_col(price_lk, col, day, h)  # noqa: E731
         getw = lambda col, day: _get_col(wlk, col, day, h)      # noqa: E731
-        getpeer = lambda col, day: _get_col(peer_lk, col, day, h)  # noqa: E731
+        getpeer = (lambda col, day: _get_col(peer_lk, col, day, h)) if peer_lk else (lambda col, day: np.nan)  # noqa: E731
 
         def _agg(col, days):
             vals = [getp(col, D - timedelta(days=k)) for k in range(1, days + 1)]
@@ -200,13 +205,18 @@ def predict_day(state, node, target_date):
     meta = state["meta"]
     feat_cols = meta["features"]
     X = build_features_for_day(state, node, target_date)
-    node_map = {str(c): float(i) for i, c in enumerate(meta.get("node_categories", []))}
-    X["node"] = X["node"].map(node_map)
+    is_elca = node == ELCA_NODE
+    if is_elca:
+        models = state["models_elca"]
+        X["node"] = 0.0
+    else:
+        models = state["models"]
+        node_map = {str(c): float(i) for i, c in enumerate(meta.get("node_categories", []))}
+        X["node"] = X["node"].map(node_map)
     X = X[feat_cols]
 
-    models = state["models"]
     # 方向分类器（决策核心，CatBoost）：P(spread>0)。单边策略：只在预测正价差且波动可控时卖，其余观望。
-    clf = models["catboost_spread_clf"]
+    clf = models["catboost_spread_elca"] if is_elca else models["catboost_spread_clf"]
     prob = clf.predict_proba(X)[:, 1]
     std7 = X["spread_std7"].fillna(99).values
     th = meta.get("decision_thresholds", {"prob_th": 0.5, "std_th": 120.0})
@@ -214,12 +224,12 @@ def predict_day(state, node, target_date):
     label_map = {"sell": "卖", "hold": "观望"}
     direction = np.where(prob > 0.5, 1, -1)
 
-    # 展示用回归
+    # 展示用回归（主模型键 lgbm_*；ELCA 键 *_q50）
     spr_q10 = models["spread_q0.1"].predict(X)
     spr_q50 = models["spread_q0.5"].predict(X)
     spr_q90 = models["spread_q0.9"].predict(X)
-    da_pred = models["lgbm_da_q0.5"].predict(X)
-    rt_pred = models["lgbm_rtpd_q0.5"].predict(X)
+    da_pred = models.get("lgbm_da_q0.5", models.get("da_q50")).predict(X)
+    rt_pred = models.get("lgbm_rtpd_q0.5", models.get("rtpd_q50")).predict(X)
 
     price_lk = state["price_lk"][node]
     has_actual = target_date in price_lk["da_price"].index

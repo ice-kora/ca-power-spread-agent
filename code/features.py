@@ -57,6 +57,18 @@ SPLIT_RANGES = {
     "val":   (pd.Timestamp("2026-01-01"), pd.Timestamp("2026-05-31")),
     "test":  (pd.Timestamp("2026-06-01"), pd.Timestamp("2026-08-05")),
 }
+# ELCAJNGT（SP15）价格数据仅 2026-03-03 起，原 train 窗口内无样本，单独用其后数据切分
+ELCA_SPLIT_RANGES = {
+    "train": (pd.Timestamp("2026-03-03"), pd.Timestamp("2026-05-31")),
+    "test":  (pd.Timestamp("2026-06-01"), pd.Timestamp("2026-08-05")),
+}
+
+
+def assign_split_elca(d):
+    for name, (lo, hi) in ELCA_SPLIT_RANGES.items():
+        if lo <= d <= hi:
+            return name
+    return np.nan
 
 
 def assign_split(d):
@@ -113,11 +125,14 @@ def build_node(node_df, node_name, peer_df=None):
     feats["spread_day_range_lag1"] = (sw.max(axis=1) - sw.min(axis=1)).shift(1)
     feats["spread_day_max_lag1"] = sw.max(axis=1).shift(1)
 
-    # 3c) 节点间联动：peer 的 D-1 同 hour 价格（同 zone 另一节点）
+    # 3c) 节点间联动：peer 的 D-1 同 hour 价格（同 zone 另一节点；无 peer 时为 NaN）
     if peer_wide is not None:
         feats["peer_spread_lag1"] = peer_wide["spread"].shift(1)
         feats["peer_da_lag1"] = peer_wide["da_price"].shift(1)
         feats["peer_rtpd_lag1"] = peer_wide["rtpd_price"].shift(1)
+    else:
+        for col in ("peer_spread_lag1", "peer_da_lag1", "peer_rtpd_lag1"):
+            feats[col] = pd.Series(np.nan, index=wide["spread"].index)
 
     # 4) 未来已知（D+1 预报值，决策时已可得）
     feats["spread_next"] = wide["spread"].shift(-1)
@@ -178,7 +193,8 @@ def build_features(master):
         peer_df = master[master["node"] == pn] if pn else None
         frames.append(build_node(nd, node, peer_df))
     df = pd.concat(frames, ignore_index=True)
-    df["split"] = df["date"].map(assign_split)
+    df["split"] = [assign_split_elca(d) if n == "ELCAJNGT_7_N001" else assign_split(d)
+                   for n, d in zip(df["node"], df["date"])]
     df = df[ORDER].sort_values(["node", "date", "hour"]).reset_index(drop=True)
     return df
 

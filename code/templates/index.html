@@ -283,6 +283,7 @@
     <div>
       <p>可预测目标日期至 <b>2026-08-06</b>（受训练数据截至 <b>2026-08-05</b> 限制），日期选择框已按此范围约束。</p>
       <p>选择<b>已过去的日期</b>时，页面会同时展示预测与真实值对比，并给出<b>方向准确率</b>（回测）。</p>
+      <p>SNLNDRO / CONTROLX（ZP26）为主节点；<b>ELCAJNGT</b>（SP15）已单独训练，但价格数据仅从 2026-03 起（训练样本少、无同 zone 联动、价差幅度大），回测套利亏损，<b>仅供参考</b>。</p>
     </div>
   </section>
 
@@ -293,7 +294,7 @@
       <select id="node">
         <option value="SNLNDRO_1_N001" selected>SNLNDRO_1_N001（ZP26）</option>
         <option value="CONTROLX_1_N001">CONTROLX_1_N001（ZP26）</option>
-        <option value="ELCAJNGT_7_N001">ELCAJNGT_7_N001（SP15）</option>
+        <option value="ELCAJNGT_7_N001">ELCAJNGT_7_N001（SP15）⚠ 数据少·仅供参考</option>
       </select>
     </div>
     <div class="field">
