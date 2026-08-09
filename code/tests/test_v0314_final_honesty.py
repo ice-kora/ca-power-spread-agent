@@ -150,7 +150,12 @@ class V0314FinalHonestyTests(unittest.TestCase):
         # Web：mvp_web.py 审计只判 available_at；模板 S4 用 UNKNOWN/NOT PROVEN
         web = (REPO_ROOT / "mvp_web.py").read_text(encoding="utf-8")
         self.assertNotIn("e.get(\"available_at\") or e.get(\"published_at\")", web)
-        html = (REPO_ROOT / "templates" / "mvp_index.html").read_text(encoding="utf-8")
+        html = "\n".join([
+            (REPO_ROOT / "templates" / "mvp_index.html").read_text(encoding="utf-8"),
+            (REPO_ROOT / "static" / "mvp_core.js").read_text(encoding="utf-8"),
+            (REPO_ROOT / "static" / "mvp_agent.js").read_text(encoding="utf-8"),
+            (REPO_ROOT / "static" / "mvp_evidence.js").read_text(encoding="utf-8"),
+        ])
         self.assertNotIn("available_at || e.published_at", html)
         self.assertIn("UNKNOWN / NOT PROVEN", html)
         # LLM Tool：get_evidence 返回的 available_at 与 snapshot 一致（不 fallback）

@@ -3,70 +3,69 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CAISO 交易决策助手 Trading Decision Agent · V0.3.1.2 Demo Freeze</title>
+<title>CAISO 交易决策助手 Trading Decision Agent</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='mvp.css') }}">
 </head>
 <body>
 <div class="wrap">
 
+  <!-- A. Header（产品名 + 系统状态单行，不占首屏主位） -->
   <header>
     <div>
       <h1>CAISO 交易决策助手 <span class="tag">Trading Decision Agent</span></h1>
-      <div class="sub">在日前报价截止前，根据当时可获得的信息，为次日节点交易提供 <b>BUY / SELL / NO TRADE</b> 建议，并说明原因。</div>
+      <div class="sub">在日前报价截止前，根据当时可获得的信息，为次日节点交易提供买入日前 / 卖出日前 / 不交易建议，并说明原因。</div>
     </div>
     <div class="nav">
       <span class="badge" id="llm-badge">LLM …</span>
-      <span class="badge" id="status-badge">决策状态: —</span>
+      <div class="sys-strip"><div class="grid" id="sys-grid"></div></div>
       <a href="/data-sources">数据来源</a>
-      <a href="/how-it-works">系统怎么做决策</a>
+      <a href="/how-it-works">系统如何做决策</a>
+      <button class="btn secondary small" id="btn-boundary">系统边界</button>
     </div>
   </header>
 
-  <!-- 系统状态（小条，不占第一屏主位） -->
-  <div class="sys-strip" id="mvp-status">
-    <div class="status-grid" id="mvp-status-grid"><span class="empty">加载中…</span></div>
-    <a href="#boundary" onclick="toggleBoundary(event)">查看系统边界</a>
-  </div>
-  <div id="boundary" style="display:none; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:14px 18px; margin-bottom:16px; font-size:13px;">
-    <div class="kv" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))" id="boundary-kv"></div>
+  <!-- 系统边界 Drawer（原 MVP STATUS 内容降级至此） -->
+  <div class="boundary" id="boundary">
+    <div class="panel">
+      <span class="close" id="boundary-close">✕</span>
+      <h3>系统边界</h3>
+      <div id="boundary-kv"></div>
+    </div>
   </div>
 
-  <!-- 参数选择 -->
+  <!-- B. Trade Selector（单行紧凑） -->
   <div class="controls">
-    <div class="field"><label>交易日期（D，次日交付）</label><input type="date" id="inp-date"></div>
+    <div class="field"><label>交易日期</label><input type="date" id="inp-date"></div>
     <div class="field"><label>节点</label><select id="inp-node"></select></div>
     <div class="field"><label>目标小时</label><select id="inp-hour"></select></div>
     <div class="field"><label>演示案例</label><select id="inp-case"><option value="">— 自选参数 —</option></select></div>
     <div class="field"><label>证据模式</label><select id="inp-evidence"></select></div>
-    <button class="btn" id="btn-run" onclick="runDecision()">生成交易建议</button>
+    <button class="btn" id="btn-run">生成交易建议</button>
   </div>
 
   <div id="error-box"></div>
 
+  <!-- C~I 主区（由 mvp_core.js 渲染） + J. 右侧 Trading Agent -->
   <div class="layout">
     <main id="main-col"></main>
     <aside class="agent-panel">
       <div class="agent-chat">
-        <h2>问交易 Agent <span class="hint">Copilot</span></h2>
-        <div class="agent-sub">可直接询问这笔交易为什么做、用了哪些数据、有什么风险、以及历史案例。</div>
+        <h2>问交易 Agent <span class="agent-chip">交易系统操作台</span></h2>
+        <div class="agent-sub">询问这笔交易为什么做、风险是什么、用了哪些数据，以及历史上发生过什么。</div>
         <div class="agent-quick" id="quick-q"></div>
         <div class="agent-input">
-          <input type="text" id="inp-question" placeholder="例如：为什么建议 SELL？" onkeydown="if(event.key==='Enter')ask()">
-          <button class="btn secondary small" onclick="ask()">发送</button>
+          <input type="text" id="inp-question" placeholder="问这笔交易…">
+          <button class="btn secondary small" id="btn-ask">发送</button>
         </div>
         <div class="agent-out" id="ask-out"></div>
         <div class="agent-note">Agent 只解释系统结果，不改变任何数字与最终建议；不展示模型私有思考过程。</div>
       </div>
-      <details class="detail" style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px">
-        <summary>更多功能（Daily Brief / 技术详情）</summary>
+      <details class="detail" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px">
+        <summary>更多功能（Daily Brief）</summary>
         <div style="margin-top:8px;font-size:12.5px">
-          <div class="ask-input" style="display:flex;gap:6px">
+          <div style="display:flex;gap:6px">
             <input type="date" id="inp-brief-date" style="flex:1;border:1px solid var(--border);border-radius:8px;padding:6px 8px">
-            <button class="btn secondary small" onclick="generateBrief()">生成日报</button>
-          </div>
-          <div style="margin-top:6px;display:flex;gap:6px">
-            <button class="btn secondary small" onclick="generateBriefAll()">全部节点</button>
-            <button class="btn secondary small" onclick="generateBrief(true)">补齐 24 小时</button>
+            <button class="btn secondary small" onclick="MVP.generateBrief && MVP.generateBrief()">生成日报</button>
           </div>
           <div id="brief-out" style="margin-top:8px"></div>
         </div>
@@ -75,432 +74,8 @@
   </div>
 
 </div>
-
-<script>
-"use strict";
-const $ = id => document.getElementById(id);
-const state = { meta: null, decision: null, decision_id: null, locked: false, revealed: false, evidence: "real" };
-
-/* ============ utils ============ */
-function esc(s){ if(s===null||s===undefined) return ""; return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
-function fmt(x,nd){ if(x===null||x===undefined) return "—"; const v=Number(x); if(Number.isNaN(v)) return "—"; if(nd===undefined) nd=2; return v.toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:nd}); }
-function fmtP(x,nd){ return (x===null||x===undefined||Number.isNaN(Number(x))) ? "—" : Number(x).toFixed(nd===undefined?3:nd); }
-function numCls(v){ return v>0?"pos":(v<0?"neg":"zero"); }
-function sign(v){ const n=Number(v); if(!Number.isFinite(n)) return ""; return n>0?"+":""; }
-async function post(path,body){ const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})}); let data=null; try{data=await r.json();}catch(e){data={status:"error",message:"响应非 JSON"};} if(!r.ok&&data.status!=="REVEALED"){ const e=data.error||{}; const err=new Error(e.message||data.message||("HTTP "+r.status)); err.code=e.code||data.status||("HTTP_"+r.status); err.action=e.suggested_action||""; err.detail=e.detail||""; throw err; } return data; }
-async function get(path){ const r=await fetch(path); return r.json(); }
-function showError(err){ let msg=err,code="",action="",detail=""; if(err instanceof Error){msg=err.message;code=err.code||"";action=err.action||"";detail=err.detail||"";} const codeHtml=code?`<div class="err-code">错误码 ERROR CODE: ${esc(code)}</div>`:""; const actionHtml=action?`<div class="err-action"><b>建议操作 Suggested action:</b> ${esc(action)}</div>`:""; const detailHtml=detail?`<div class="err-detail muted">详情 detail: ${esc(detail)}</div>`:""; $("error-box").innerHTML=`<div class="notice err"><span class="tag">出错了</span><div>${codeHtml}<p><b>${esc(msg)}</b></p>${actionHtml}${detailHtml}</div></div>`; }
-function clearError(){ $("error-box").innerHTML=""; }
-function section(title, hint, html){ return `<div class="card"><h2>${esc(title)} ${hint?`<span class="hint">${esc(hint)}</span>`:""}</h2>${html||`<div class="empty">运行一次决策后填充</div>`}</div>`; }
-
-/* ============ 业务翻译（只影响展示，不改数字） ============ */
-const FINAL_ZH = { SELL_DA:"卖出日前", BUY_DA:"买入日前", NO_TRADE:"不交易" };
-const FINAL_ACTION = { SELL_DA:"SELL DA", BUY_DA:"BUY DA", NO_TRADE:"NO TRADE" };
-const GATE_ZH = { PASS:"允许继续", WARNING:"谨慎交易", REJECT:"禁止交易" };
-const FEAT_ZH = {
-  spread_mean30:"最近 30 天平均价差", spread_std30:"最近 30 天波动", spread_mean7:"最近 7 天价差",
-  spread_std7:"最近 7 天波动", spread_mean14:"最近 14 天价差", spread_std14:"最近 14 天波动",
-  spread_lag1:"昨日价差（滞后）", da_lag1:"昨日日前价（滞后）", rtpd_lag1:"昨日实时价（滞后）",
-  load_actual_lag1:"昨日实际负荷", load_2da_forecast:"两日前负荷预测", load_peak_flag:"负荷峰值标记",
-  t2m_lag1:"昨日气温（滞后）", ssrd_lag1:"昨日太阳辐射（滞后）", wind100_lag1:"昨日风速（滞后）",
-  peer_spread_lag1:"同类节点价差（滞后）"
-};
-function featZh(f){ return FEAT_ZH[f]||f; }
-function signalZh(ms){ if(ms==null) return "未知"; if(ms>=0.5) return "偏高"; if(ms>=0.2) return "中等"; return "偏低"; }
-function dirZh(d){ return d==="SELL"?"SELL":(d==="BUY"?"BUY":"—"); }
-function utcToPt(iso){ if(!iso) return "—"; try{ const d=new Date(iso); const pt=new Date(d.getTime()-7*3600*1000); const hh=String(pt.getUTCHours()).padStart(2,"0"); const mm=String(pt.getUTCMinutes()).padStart(2,"0"); return hh+":"+mm+" PT"; }catch(e){ return iso; } }
-
-/* ============ 系统状态（小条） ============ */
-function renderMvpStatus(meta){
-  const s=meta.mvp_status||{};
-  const em = state.evidence==="offline" ? "NONE" : (meta.evidence_mode_default||"LIVE");
-  const emZh = em==="HISTORICAL_SNAPSHOT"?"历史快照":(em==="LIVE"?"实时":"离线");
-  const items=[
-    ["● Agent", "已连接", "ok"],
-    ["数据模式 DATA MODE", s.data_mode||"DEMO", (s.data_mode||"")==="FULL"?"ok":"warn"],
-    ["证据模式 EVIDENCE MODE", emZh+" "+em, em==="HISTORICAL_SNAPSHOT"?"ok":""],
-    ["自动交易 AUTO TRADING", (s.auto_trading||"DISABLED")==="DISABLED"?"关闭":"开启", "off"],
-    ["当前模型", "实验性", "warn"]
-  ];
-  const grid=$("mvp-status-grid"); if(!grid) return;
-  grid.innerHTML=items.map(([k,v,cls])=>`<span><span class="dot ${cls==="ok"?"ok":(cls==="warn"?"warn":"off")}"></span><b>${esc(k)}</b>：${esc(v)}</span>`).join(" &nbsp;|&nbsp; ");
-}
-function toggleBoundary(e){ if(e) e.preventDefault(); const b=$("boundary"); b.style.display = b.style.display==="none"?"block":"none"; renderBoundary(); }
-function renderBoundary(){
-  const m=state.meta||{}, s=m.mvp_status||{}, llm=m.llm||{};
-  const rows=[
-    ["Model Alpha（模型信号等级）", s.model_alpha||"WEAK"],
-    ["Profitability Verified（盈利已验证）", s.profitability_verified||"NO"],
-    ["Settlement（结算范围）", s.settlement||"Simplified Signal Backtest"],
-    ["Auto Trading（自动交易）", s.auto_trading||"Disabled"],
-    ["LLM", (s.llm||"NOT CONFIGURED")+" / "+(llm.provider||"")],
-    ["版本号 Version", m.web_version||"V0.3.1.2 Demo Freeze"],
-    ["Alpha 说明", "当前为实验性信号，不保证盈利"]
-  ];
-  $("boundary-kv").innerHTML=rows.map(([k,v])=>`<div class="item"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join("");
-}
-
-/* ============ init ============ */
-async function init(){
-  try{
-    const meta=await get("/api/meta"); state.meta=meta; renderMvpStatus(meta);
-    const nodeSel=$("inp-node"); nodeSel.innerHTML=Object.entries(meta.nodes).map(([n,z])=>`<option value="${esc(n)}">${esc(meta.node_short[n])} (${z})</option>`).join("");
-    const hourSel=$("inp-hour"); hourSel.innerHTML=Array.from({length:24},(_,i)=>`<option value="${i+1}">H${i+1}</option>`).join("");
-    const d=$("inp-date"); d.min=meta.min_decision_date; d.max=meta.max_decision_date; d.value=meta.golden_cases[0].decision_date;
-    const db=$("inp-brief-date"); db.min=meta.min_decision_date; db.max=meta.max_decision_date; db.value=meta.golden_cases[0].decision_date;
-    const cs=$("inp-case"); meta.golden_cases.forEach(c=>{ const o=document.createElement("option"); o.value=c.id; o.textContent=c.label; cs.appendChild(o); });
-    cs.addEventListener("change",()=>{ const c=meta.golden_cases.find(x=>x.id===cs.value); if(c){ d.value=c.decision_date; nodeSel.value=c.node; hourSel.value=String(c.hour); } });
-    const ev=$("inp-evidence"); meta.evidence_modes.forEach(m=>{ const o=document.createElement("option"); o.value=m.id; o.textContent=m.label; ev.appendChild(o); });
-    const defEv=meta.default_evidence||"real"; state.evidence=defEv; ev.value=defEv;
-    ev.addEventListener("change",()=>{ state.evidence=ev.value; renderMvpStatus(meta); });
-    const llm=meta.llm||{}, ms=meta.mvp_status||{}; const connected=(ms.llm||"")==="CONNECTED";
-    $("llm-badge").className="badge "+(connected?"ok":"warn");
-    $("llm-badge").textContent=connected?`LLM 已连接 (${esc(ms.llm_provider||llm.provider||"?").toUpperCase()})`:"LLM 未配置 NOT CONFIGURED";
-    $("quick-q").innerHTML=["为什么建议 SELL？","为什么不是 BUY？","最大的风险是什么？","用了哪些数据？","有哪些信息被系统拒绝了？","有没有类似历史案例？","这个建议是谁决定的？"].map(q=>`<button onclick="ask('${esc(q)}')">${esc(q)}</button>`).join("");
-    renderEmpty();
-  }catch(e){ showError(e); }
-}
-function renderEmpty(){ $("main-col").innerHTML=`<div class="card"><div class="empty">选择交易日期 / 节点 / 小时，然后点击「生成交易建议」。</div></div>`; }
-
-/* ============ RUN DECISION ============ */
-async function runDecision(){
-  const body={ decision_date:$("inp-date").value, node:$("inp-node").value, hour:Number($("inp-hour").value), evidence:state.evidence };
-  if(!body.decision_date){ showError("请选择交易日期"); return; }
-  clearError();
-  const btn=$("btn-run"), old=btn.textContent; btn.disabled=true; btn.textContent="正在生成…";
-  try{
-    const data=await post("/api/decision",body);
-    state.decision=data.decision; state.decision_id=data.decision.decision_id;
-    state.locked=data.decision.lock.locked; state.revealed=data.decision.outcome_revealed; state.post_trade=null;
-    renderDecision();
-  }catch(e){ showError(e); }
-  finally{ btn.disabled=false; btn.textContent=old; }
-}
-
-/* ============ 业务渲染 ============ */
-function renderDecision(){
-  const dec=state.decision, ctx=dec.context||{};
-  state.evidence=ctx.evidence_mode||state.evidence;
-  $("status-badge").textContent="决策状态: "+(state.locked?"已锁定":"未锁定");
-  $("status-badge").className="badge "+(state.locked?"ok":"warn");
-  const html=[renderHero(dec), renderWhy(dec), renderData(dec), renderEvidence(dec), renderCases(dec), renderLockReveal(dec), renderAudit(dec)].join("");
-  $("main-col").innerHTML=html;
-}
-
-/* ---------- 1. Hero：最终建议（视觉中心） ---------- */
-function renderHero(dec){
-  const ctx=dec.context, c=dec.context, mo=dec.model_output||{}, rg=dec.risk_gate||{}, ev=dec.evidence||{};
-  const final=dec.final_recommendation;
-  const er=mo.expected_return;
-  const nElig=(ev.eligible||[]).length;
-  const gateZh=GATE_ZH[rg.decision]||rg.decision||"—";
-  const dirLine = final==="SELL_DA"?"系统预计日前价格高于实时价格，同时当前没有触发禁止交易的风险条件，因此白盒规则建议卖出日前（SELL DA）。"
-    : (final==="BUY_DA"?"系统预计实时价格高于日前价格，同时当前没有触发禁止交易的风险条件，因此白盒规则建议买入日前（BUY DA）。"
-       :"当前信号或风险条件不足以支持交易，因此建议不交易（NO TRADE）。");
-  const cls=final==="SELL_DA"?"SELL":(final==="BUY_DA"?"BUY":"NO_TRADE");
-  return `<div class="hero">
-    <div class="hero-head">
-      <div class="who">${esc(ctx.node||"")}（${esc(ctx.zone||"")}）· 次日 ${ctx.hour?("H"+ctx.hour):""}<br><span class="muted">决策截止 ${esc(ctx.decision_cutoff_pt||"")} · 市场规则版本 ${esc(c.market_rule_version||"—")}</span></div>
-      <div class="rec ${cls}">
-        <div class="action">${esc(FINAL_ZH[final]||final)}</div>
-        <div class="action en">${esc(FINAL_ACTION[final]||final)}</div>
-        <div class="badge ${cls}">${esc(final)}</div>
-      </div>
-    </div>
-    <div class="hero-stats">
-      <div class="stat"><div class="k">预计 DA − RT</div><div class="v ${er==null?"":numCls(er)}">${er==null?"—":sign(er)+fmt(er,2)+" $/MWh"}</div></div>
-      <div class="stat"><div class="k">模型把握度</div><div class="v small">${esc(signalZh(mo.model_signal_strength))}</div></div>
-      <div class="stat"><div class="k">风控</div><div class="v small ${rg.decision==="REJECT"?"neg":(rg.decision==="WARNING"?"warn":"pos")}">${esc(gateZh)}</div></div>
-      <div class="stat"><div class="k">可用外部证据</div><div class="v small">${nElig} 条</div></div>
-    </div>
-    <div class="explain">${esc(dirLine)}</div>
-  </div>`;
-}
-
-/* ---------- 2. 为什么这样建议（三卡） ---------- */
-function renderWhy(dec){
-  const mo=dec.model_output||{}, rg=dec.risk_gate||{}, re=dec.rule_engine||{}, final=dec.final_recommendation;
-  const er=mo.expected_return;
-  const gateZh=state.meta.reason_translations.gate||{};
-  const ruleZh=state.meta.reason_translations.rule||{};
-  const reasons=(rg.risk_reasons||[]).map(c=>`· ${esc(gateZh[c]||c)}`).join("<br>");
-  const rules=(re.rules_hit||[]).map((rid,i)=>{ const rc=(re.reasons||[])[i]; return `<code>${esc(rid)}</code> ${esc(ruleZh[rc]||rc||"")}`; }).join(" · ");
-  const flow = final==="SELL_DA"
-    ? `预计 DA − RT &gt; 0 <span class="arrow">+</span> 风险检查通过 <span class="arrow">↓</span> <b>卖出日前 SELL DA</b>`
-    : (final==="BUY_DA"
-      ? `预计 DA − RT &lt; 0 <span class="arrow">+</span> 风险检查通过 <span class="arrow">↓</span> <b>买入日前 BUY DA</b>`
-      : `信号或风险条件不足 <span class="arrow">→</span> <b>不交易 NO TRADE</b>`);
-  const modelNote = er!=null && er>0
-    ? "模型预计 DA 高于 RT，但当前模型信号并不强，因此模型意见只作为量化参考。"
-    : "模型当前判断不构成明确方向，仅供量化参考。";
-  return section("为什么这样建议","白盒推理 · 三个独立环节",
-    `<div class="why-grid">
-      <div class="why-card">
-        <h3>① 模型怎么看？</h3>
-        <div class="kv" style="margin-top:6px">
-          <div class="item"><div class="k">预计价差</div><div class="v ${er==null?"":numCls(er)}">${er==null?"—":sign(er)+fmt(er,2)}</div></div>
-          <div class="item"><div class="k">方向判断</div><div class="v">${esc(dirZh(mo.direction))}</div></div>
-          <div class="item"><div class="k">信号强度</div><div class="v">${esc(signalZh(mo.model_signal_strength))}</div></div>
-        </div>
-        <div class="note">${esc(modelNote)}</div>
-        <details class="detail"><summary>查看模型技术数据</summary><div class="detail-body"><div class="kv" style="grid-template-columns:1fr">
-          <div class="item"><div class="k">expected_return</div><div class="v mono">${fmt(mo.expected_return,4)} $/MWh</div></div>
-          <div class="item"><div class="k">prob_positive / prob_negative</div><div class="v mono">${fmtP(mo.prob_positive,4)} / ${fmtP(mo.prob_negative,4)}</div></div>
-          <div class="item"><div class="k">direction_probability</div><div class="v mono">${fmtP(mo.direction_probability,4)}</div></div>
-          <div class="item"><div class="k">model_signal_strength</div><div class="v mono">${fmtP(mo.model_signal_strength,4)}</div></div>
-          <div class="item"><div class="k">uncertainty</div><div class="v mono">${fmtP(mo.uncertainty,4)}</div></div>
-        </div></div></details>
-      </div>
-      <div class="why-card">
-        <h3>② 风控让不让做？</h3>
-        <div class="big ${rg.decision==="REJECT"?"err":(rg.decision==="WARNING"?"warn":"ok")}">${esc(rg.decision||"—")}</div>
-        <div style="font-size:13px;font-weight:600;margin-top:2px">${esc(GATE_ZH[rg.decision]||"")}</div>
-        <div class="note">${reasons?`命中风险条件：<br>${reasons}`:"当前没有命中系统定义的风险拦截条件。"}</div>
-        <details class="detail"><summary>查看风控技术详情</summary><div class="detail-body">
-          ${(rg.rules_hit||[]).map(r=>`<div><code>${esc(r.rule_id)}</code> ${esc(r.reason_code)} — ${esc(r.message||"")}</div>`).join("")||"<div>无风险规则命中（PASS）。</div>"}
-        </div></details>
-      </div>
-      <div class="why-card">
-        <h3>③ 最终规则是什么？</h3>
-        <div class="rule-flow">${flow}</div>
-        <div class="note" style="margin-top:8px">SELL DA = 日前卖出，实时买回；BUY DA = 日前买入，实时卖出。最终若 DA − RT 符号与建议一致，则交易盈利。</div>
-        <div class="note">规则命中：${rules||"未命中规则"}</div>
-      </div>
-    </div>`);
-}
-
-/* ---------- 3. 本次使用的数据 ---------- */
-function renderData(dec){
-  const feats=(dec.top_features||[]).filter(f=>f.z!==null&&f.z!==undefined);
-  const rows = feats.length ? feats.map(f=>`
-    <div class="ck-item"><span class="mark ok">✓</span><div class="body">
-      <div class="t">${esc(featZh(f.feature))}（<code>${esc(f.feature)}</code>）</div>
-      <div class="d">当前值 ${fmt(f.value,2)} · 偏离历史 ${f.z>0?"+":""}${fmt(f.z,2)}σ（用于解释当前输入是否偏离历史水平，不代表严格的模型因果贡献）</div>
-    </div></div>`).join("")
-    : `<div class="empty">（本决策无可用特征统计）</div>`;
-  return section("本次使用的数据","决策时点（10:00 PT）前可得的真实信息",
-    `<div class="ck-list">${rows}</div>
-     <details class="detail"><summary>查看数据血缘</summary><div class="detail-body">
-       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>特征 Feature</th><th>值 Value</th><th>来源 Source</th><th>类型</th><th>可用时刻 available_at</th><th>可用性依据</th><th>决策可用</th></tr></thead><tbody>
-       ${(dec.top_features||[]).map(f=>`<tr><td><code>${esc(f.feature)}</code></td><td class="num">${fmt(f.value,2)}</td><td>${esc(f.source||"")}</td><td>${esc(f.source_type||"")}</td><td>${esc(f.available_at||"—")}</td><td>${esc(f.availability_basis||"—")}</td><td>${f.decision_eligible?"是":"否"}</td></tr>`).join("")}
-       </tbody></table></div>
-       <div class="muted" style="margin-top:6px">展示的 available_at 与时间门判定口径一致；滞后/历史特征以最晚可证上界表达，不显示伪精确时间戳。</div>
-     </div></details>`);
-}
-
-/* ---------- 4. 外部信息：允许 / 拒绝 ---------- */
-function renderEvidence(dec){
-  const ev=dec.evidence||{}; const elig=ev.eligible||[]; const rej=ev.rejected||ev.post_decision||[];
-  const eligHtml = elig.length ? elig.map(e=>`
-    <div class="ck-item"><span class="mark ok">✓</span><div class="body">
-      <div class="t">${esc(e.source||"")}</div>
-      <div class="d">${esc(e.summary||"")}</div>
-      <div class="d muted">初始化 ${esc(utcToPt(e.initialization_time))} · 可用 ${esc(utcToPt(e.available_at))} · 截止 ${esc(utcToPt(e.decision_cutoff))}</div>
-    </div></div>`).join("") : `<div class="empty">截止前无可用真实外部证据（不编造）。</div>`;
-  const rejHtml = rej.length ? rej.map(e=>{
-    const initAfter = e.initialization_time && e.decision_cutoff && new Date(e.initialization_time)>new Date(e.decision_cutoff);
-    const reason = initAfter
-      ? "该 GFS run 在交易截止时间之后才开始初始化，因此无论最终何时发布，都不可能被当时的交易员获得。"
-      : (e.available_at ? "该信息在交易截止之后才可获得，因此未参与当时的决策。" : "该信息无法证明在截止前可获得（AVAILABILITY_NOT_PROVEN），因此未参与决策。");
-    return `<div class="ck-item"><span class="mark no">✕</span><div class="body">
-      <div class="t">${esc(e.source||"")} <span class="badge err">未参与决策 NOT USED</span></div>
-      <div class="d">${esc(reason)}</div>
-      ${initAfter ? `<div class="tg-box" style="margin-top:8px">
-        <div class="tg-title">报价截止 vs 信息来源时间</div>
-        <div class="tg-grid">
-          <div class="item"><div class="k">报价截止（Decision Cutoff）</div><div class="v">${esc(utcToPt(e.decision_cutoff))}</div></div>
-          <div class="item"><div class="k">该 run 初始化（Initialization）</div><div class="v">${esc(utcToPt(e.initialization_time))}</div></div>
-          <div class="item"><div class="k">实际可用时间（Available At）</div><div class="v">${e.available_at?"":esc("无法证明")}</div></div>
-        </div>
-        <div class="tg-note">它在报价截止以后才开始产生，所以系统没有使用它 —— 本条信息未参与最终交易建议。</div>
-        <details class="detail"><summary>查看技术详情</summary><div class="detail-body">
-          <div class="kv" style="grid-template-columns:1fr">
-            <div class="item"><div class="k">reason_code</div><div class="v mono">${esc(e.rejection_reason||"")}</div></div>
-            <div class="item"><div class="k">available_at（可用时间）</div><div class="v mono">${e.available_at?esc(e.available_at):"UNKNOWN / NOT PROVEN（不伪造）"}</div></div>
-            <div class="item"><div class="k">initialization_time</div><div class="v mono">${esc(e.initialization_time||"—")}</div></div>
-            <div class="item"><div class="k">available_at_source</div><div class="v mono">${esc(e.available_at_source||"—")}</div></div>
-            <div class="item"><div class="k">decision_cutoff</div><div class="v mono">${esc(e.decision_cutoff||"—")}</div></div>
-          </div>
-        </div></details>
-      </div>` : ""}
-    </div></div>`; }).join("") : `<div class="empty">本决策未获取到被拒的外部信息。</div>`;
-  return section("外部信息","系统用了什么 / 拒绝了什么（Evidence Time Gate）",
-    `<div class="sub" style="font-weight:600;margin-bottom:8px">本次允许使用的信息</div>
-     <div class="ck-list">${eligHtml}</div>
-     <div style="height:14px"></div>
-     <div class="sub" style="font-weight:600;margin-bottom:8px">被系统拒绝的信息（只进复盘，不影响决策）</div>
-     <div class="ck-list">${rejHtml}</div>`);
-}
-
-/* ---------- 5. 类似历史案例 ---------- */
-function renderCases(dec){
-  const cases=(dec.top_cases||[]);
-  if(!cases.length) return section("类似历史案例","","<div class='empty'>决策时点前无相似已结算案例。</div>");
-  const list=cases.slice(0,3).map(c=>{
-    const decision=c.decision!==undefined?c.decision:c.model_prediction;
-    const outcome=c.outcome!==undefined?c.outcome:c.actual_Return;
-    const lessonArr=c.lessons||[]; const lesson=c.lesson!==undefined?c.lesson:(lessonArr[0]||c.why_correct_or_wrong||"");
-    return `<div class="case-card"><div class="case-head">
-      <div class="case-date">${esc(String(c.decision_date||"").slice(0,10))} · ${esc(c.node||"")} · H${c.hour}</div>
-      <div><span class="pill ${decision==="SELL"?"SELL":(decision==="BUY"?"BUY":"hold")}">${esc(decision||"—")}</span>
-      <span class="case-outcome ${numCls(outcome)}">${outcome==null?"—":sign(outcome)+fmt(outcome,0)+" $/MWh"}</span></div>
-    </div><div class="case-lesson">${esc(lesson||"—")}</div>
-    <details class="detail"><summary>查看案例审计信息</summary><div class="detail-body"><div class="kv" style="grid-template-columns:1fr">
-      <div class="item"><div class="k">case_id</div><div class="v mono">${esc(c.case_id||"—")}</div></div>
-      <div class="item"><div class="k">case_available_at</div><div class="v mono">${esc(c.case_available_at||"—")}</div></div>
-      <div class="item"><div class="k">expected_return</div><div class="v mono">${fmt(c.expected_return,2)}</div></div>
-    </div></div></details></div>`;
-  }).join("");
-  return section("类似历史案例",`找到 ${cases.length} 个类似已结算案例（as-of）`,`${list}`);
-}
-
-/* ---------- 6. Lock / Reveal ---------- */
-function renderLockReveal(dec){
-  const final=dec.final_recommendation;
-  const lockHtml = state.locked
-    ? `<button class="btn" disabled>✓ 已锁定</button><span class="lock-state locked">决策已锁定 <span class="hint">从这一刻起，之后发生的信息不会反向修改本次建议。</span></span>`
-    : `<button class="btn" id="btn-lock" onclick="lockDecision()">锁定本次决策</button><span class="muted">从这一刻起，之后发生的信息不会反向修改本次建议。</span>`;
-  const revealBtn = `<button class="btn secondary" id="btn-reveal" onclick="revealOutcome()" ${state.locked?"":"disabled"}>揭晓真实结果</button>`;
-  const revealArea = state.revealed && state.post_trade ? renderResult(dec, state.post_trade) : "";
-  return section("锁定本次决策","Lock → Reveal → Post-trade",
-    `<div class="lock-bar">${lockHtml}${revealBtn}</div>
-     <div id="reveal-area" style="margin-top:12px">${revealArea}</div>`);
-}
-async function lockDecision(){ clearError(); try{ await post("/api/decision/"+state.decision_id+"/lock",{}); state.locked=true; $("status-badge").className="badge ok"; $("status-badge").textContent="决策状态: 已锁定"; const b=$("btn-lock"); if(b){b.disabled=true;b.textContent="✓ 已锁定";} const rb=$("btn-reveal"); if(rb) rb.disabled=false; const area=$("reveal-area"); if(area) area.innerHTML=`<div class="notice info"><span class="tag">已锁定</span> 从这一刻起，之后发生的信息不会反向修改本次建议。</div>`; }catch(e){ showError(e); } }
-async function revealOutcome(){ clearError(); try{ const data=await post("/api/decision/"+state.decision_id+"/reveal",{}); state.revealed=true; state.post_trade=data.post_trade; const rb=$("btn-reveal"); if(rb) rb.disabled=true; const area=$("reveal-area"); if(area) area.innerHTML=renderResult(state.decision, data.post_trade); }catch(e){ showError(e); } }
-
-/* ---------- 7. 实际结果 + 复盘 ---------- */
-function renderResult(dec, pt){
-  if(!pt || pt.status!=="REVEALED") return "";
-  const final=dec.final_recommendation;
-  const pnl=pt.pnl||0; const loss=pnl<0;
-  const dirCorrect = pt.direction_correct;
-  const review=pt.review||{}; const prim=review.primary||[]; const notes=review.notes||[];
-  const gate=dec.risk_gate?.decision;
-  const what = loss ? "实际价差与本次建议方向相反，产生亏损。" : "实际价差与本次建议方向一致，实现盈利。";
-  const whyText = (prim.includes("MODEL_ERROR")?"模型本身信号偏弱且方向判断有误。":(prim.includes("HIGH_UNCERTAINTY")?"模型不确定性较高，最终市场走势发生反转。":"市场实际走势与模型预期不同。"));
-  const dirLabel = final==="SELL_DA"?"卖出日前":(final==="BUY_DA"?"买入日前":"不交易");
-  const chips = prim.map(t=>`<span class="pill warn">${esc(t)}</span>`).join(" ");
-  return `<div class="result-box ${loss?"loss":"win"}">
-    <div class="result-title">${loss?"本次方向判断错误":"本次方向判断正确"}</div>
-    <div class="result-grid">
-      <div class="rg"><div class="k">日前价格 DA</div><div class="v">${fmt(pt.actual_da,2)} $/MWh</div></div>
-      <div class="rg"><div class="k">实时价格 RT</div><div class="v">${fmt(pt.actual_rtpd,2)} $/MWh</div></div>
-      <div class="rg"><div class="k">实际 DA − RT</div><div class="v ${numCls(pt.actual_return)}">${sign(pt.actual_return)}${fmt(pt.actual_return,2)}</div></div>
-      <div class="rg"><div class="k">本次 ${esc(dirLabel)} 结果</div><div class="v ${numCls(pnl)}">${sign(pnl)}${fmt(pnl,2)} $/MWh</div></div>
-    </div>
-    <div class="result-note">${esc(what)}</div>
-  </div>
-  <div class="card" style="box-shadow:none">
-    <h2>复盘</h2>
-    <div class="review-q"><div class="q">发生了什么？</div><div class="a">${esc(what)}</div></div>
-    <div class="review-q"><div class="q">为什么？</div><div class="a">${esc(whyText)}</div></div>
-    <div class="review-q"><div class="q">系统当时有没有偷看到后来信息？</div><div class="a">没有。任何晚于报价截止的信息（如 GFS 18Z）都明确被拒绝，因此当时的建议只基于截止前可用的信息。</div></div>
-    <div class="review-q"><div class="q">有什么教训？</div><div class="a">当前模型对尾部价格变化仍不够稳定，未来需要重点改善 EV / Tail Risk 建模；本次结果属实验性范围，不代表稳定盈利能力。</div></div>
-    <details class="detail"><summary>查看结构化复盘标签</summary><div class="detail-body">
-      <div style="margin-bottom:6px">${chips||"—"}</div>
-      ${notes.length?notes.map(n=>`<div style="margin-top:4px">↳ ${esc(n)}</div>`).join(""):""}
-      <div class="kv" style="grid-template-columns:1fr;margin-top:8px">
-        <div class="item"><div class="k">方向正确? direction_correct</div><div class="v mono">${dirCorrect===null?"N/A（未交易）":(dirCorrect?"是":"否")}</div></div>
-        <div class="item"><div class="k">模型预测误差</div><div class="v mono">${pt.model_prediction_error==null?"—":sign(pt.model_prediction_error)+fmt(pt.model_prediction_error,2)}</div></div>
-      </div>
-    </div></details>
-  </div>`;
-}
-
-/* ---------- 8. 审计（默认折叠） ---------- */
-function renderAudit(dec){
-  const a=dec.audit||{}; const rt=a.runtime||{}; const items=rt.items||[];
-  const overall=rt.overall||a.overall||"UNKNOWN";
-  const nPass=items.filter(i=>i.status==="PASS").length, nWarn=items.filter(i=>i.status==="WARNING").length, nFail=items.filter(i=>i.status==="FAIL").length;
-  const overallCls = overall==="PASS"?"ok":(overall==="WARNING"?"warn":"err");
-  const auditItems = items.map(it=>`<div class="audit-item"><span class="st ${it.status==="PASS"?"ok":(it.status==="WARNING"?"warn":"err")}">${esc(it.status)}</span> · ${esc(it.name||it.key)}<div class="note">${esc(it.note||"")}</div></div>`).join("");
-  return section("审计状态","真实运行检查，不写死 PASS",
-    `<div class="audit-summary">
-      <span class="overall ${overallCls}">${esc(overall)}</span>
-      <span class="muted">${nPass} 项通过 · ${nWarn} 项提醒${nFail?(" · "+nFail+" 项失败"):""}</span>
-    </div>
-    <details class="detail"><summary>查看审计详情</summary><div class="detail-body"><div class="audit-items">${auditItems||"<div class='empty'>无审计数据</div>"}</div></div></details>`);
-}
-
-/* ============ Ask Trading Agent（Streaming） ============ */
-async function ask(q){
-  const question=(q!==undefined?q:$("inp-question").value).trim();
-  if(!question) return;
-  clearError();
-  const out=$("ask-out");
-  out.innerHTML=`<div class="agent-answer streaming">Agent 正在分析当前决策…<span class="cursor"></span></div><div class="agent-trace"></div>`;
-  try{
-    const resp=await fetch("/api/ask/stream",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question,decision_id:state.decision_id})});
-    const reader=resp.body.getReader(); const decoder=new TextDecoder();
-    let buf="", answer="", trace=[], done=false;
-    const traceBox=out.querySelector(".agent-trace");
-    const answerBox=out.querySelector(".agent-answer");
-    const renderTrace=()=>{ traceBox.innerHTML=trace.map(t=>`<div class="trace-step"><span class="s ${t.done?"ok":(t.status==="run"?"run":"")}">${t.done?"✓":"○"} ${esc(t.label)}</span></div>`).join(""); };
-    while(!done){
-      const {value, done:dn}=await reader.read(); done=dn;
-      buf+=decoder.decode(value||new Uint8Array(),{stream:!done});
-      let idx;
-      while((idx=buf.indexOf("\n\n"))>=0){
-        const block=buf.slice(0,idx); buf=buf.slice(idx+2);
-        let ev="message", data="";
-        for(const line of block.split("\n")){
-          if(line.startsWith("event:")) ev=line.slice(6).trim();
-          else if(line.startsWith("data:")) data+=line.slice(5).trim();
-        }
-        handleAskEvent(ev, data, answerBox, traceBox, trace, ()=>{renderTrace();});
-      }
-    }
-    if(answer){
-      answerBox.innerHTML=esc(answer);
-      answerBox.classList.remove("streaming");
-    }
-  }catch(e){ out.innerHTML=`<div class="notice err"><span class="tag">出错</span><p>${esc(e.message||"流式请求失败")}</p></div>`; }
-}
-function handleAskEvent(ev, data, answerBox, traceBox, trace, refresh){
-  if(!data) return;
-  let d={}; try{ d=JSON.parse(data); }catch(e){ return; }
-  if(ev==="tool_start"){
-    trace.push({label:d.label||d.tool||"正在调用工具…", status:"run", done:false});
-  }else if(ev==="tool_result"){
-    const last=trace[trace.length-1];
-    if(last&&!last.done){ last.done=true; last.label=(d.label||"工具完成"); }
-    else trace.push({label:(d.label||"查询完成"), done:true});
-  }else if(ev==="answer_delta"){
-    if(answerBox){
-      if(answerBox.classList.contains("streaming")===false){ answerBox.classList.add("streaming"); }
-      const cur=answerBox.textContent==="Agent 正在分析当前决策…"?"":answerBox.textContent;
-      answerBox.innerHTML=esc(cur+(d.text||""));
-    }
-  }else if(ev==="answer_done"){
-    // 移除闪烁光标
-  }else if(ev==="guard"){
-    trace.push({label:d.status==="PASS"?"一致性检查通过":"一致性检查未通过（已拦截）", done:true});
-  }else if(ev==="agent_status"){
-    const last=trace[trace.length-1];
-    if(last&&last.status==="run"&&last.done===false){ last.done=true; last.label=d.label||last.label; }
-  }
-  refresh && refresh();
-}
-
-/* ============ Daily Brief（弱化） ============ */
-async function generateBrief(allHours, allNodes){
-  const dd=$("inp-brief-date").value; if(!dd){ showError("请选择日报的日期"); return; }
-  const out=$("brief-out"); out.innerHTML=`<div class="empty">扫描中…</div>`;
-  const node=allNodes?null:$("inp-node").value;
-  try{
-    const data=await post("/api/brief",{decision_date:dd,node:node,all_hours:!!allHours,evidence:state.evidence});
-    const s=data.summary||{}; const rows=data.rows||[];
-    let html=`<div class="kv" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr));font-size:12px">
-      ${[["日期",data.decision_date],["节点",data.node_scope],["候选",data.n_candidates],["BUY",s.BUY_DA],["SELL",s.SELL_DA],["NO_TRADE",s.NO_TRADE]].map(([k,v])=>`<div class="item"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join("")}
-    </div>`;
-    if(rows.length){ html+=`<div style="margin-top:6px;font-size:12px">${rows.slice(0,8).map(r=>`<div>${esc(r.node)} H${r.hour} · <b>${esc(r.final)}</b> · er ${fmt(r.expected_return,1)}</div>`).join("")}</div>`; }
-    out.innerHTML=html;
-  }catch(e){ out.innerHTML=`<div class="notice err">${esc(e.message||"日报生成失败")}</div>`; }
-}
-function generateBriefAll(){ generateBrief(false,true); }
-
-window.addEventListener("DOMContentLoaded", init);
-</script>
+<script src="{{ url_for('static', filename='mvp_core.js') }}"></script>
+<script src="{{ url_for('static', filename='mvp_agent.js') }}"></script>
+<script src="{{ url_for('static', filename='mvp_evidence.js') }}"></script>
 </body>
 </html>

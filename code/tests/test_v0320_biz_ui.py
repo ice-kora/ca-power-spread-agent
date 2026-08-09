@@ -60,8 +60,14 @@ GOLDEN = [
 
 
 def _page() -> str:
+    """V0.4 拆分架构：页面源码 = templates/mvp_index.html + static/*.js 拼接。"""
     import mvp_web  # noqa: PLC0415
-    return mvp_web.app.test_client().get("/").get_data(as_text=True)
+    parts = [mvp_web.app.test_client().get("/").get_data(as_text=True)]
+    for js in ("mvp_core.js", "mvp_agent.js", "mvp_evidence.js"):
+        p = REPO_ROOT / "static" / js
+        if p.exists():
+            parts.append(p.read_text(encoding="utf-8"))
+    return "\n".join(parts)
 
 
 def _parse_sse(body: str):
@@ -95,7 +101,7 @@ class V0320BizUITests(unittest.TestCase):
         """Hero Card：页面含中文动作（卖出日前/买入日前/不交易），且 /api/decision 数据正确。"""
         import mvp_web  # noqa: PLC0415
         html = _page()
-        for zh in ("卖出日前", "买入日前", "不交易", "预计 DA − RT", "模型把握度", "风控", "可用外部证据"):
+        for zh in ("卖出日前", "买入日前", "不交易", "预计 DA − RT", "风险检查", "模型信号", "截止前可用证据"):
             self.assertIn(zh, html, f"Hero 缺少中文标签 {zh}")
         # Case B → SELL_DA，数字一致
         r = mvp_web.app.test_client().post(
@@ -109,8 +115,8 @@ class V0320BizUITests(unittest.TestCase):
     def test_u2_chinese_business_labels(self):
         """主界面以中文业务语言为主，不默认满屏字段名。"""
         html = _page()
-        for zh in ("生成交易建议", "为什么这样建议", "本次使用的数据", "外部信息",
-                   "类似历史案例", "锁定本次决策", "问交易 Agent", "审计状态", "系统状态"):
+        for zh in ("生成交易建议", "为什么这样建议", "本次决策依据", "外部信息",
+                   "类似历史案例", "锁定本次决策", "问交易 Agent", "审计状态", "系统边界"):
             self.assertIn(zh, html, f"缺中文业务标签 {zh}")
         # 旧的英文模块平铺标题不应作为默认主标题
         for old in ("Decision Context（决策上下文）", "Predictive Model（预测模型"):
@@ -120,7 +126,7 @@ class V0320BizUITests(unittest.TestCase):
         """原始技术字段默认折叠（details）；不默认铺开 expected_return 等。"""
         html = _page()
         self.assertGreater(html.count("<details class=\"detail\""), 0, "应有默认折叠的 details")
-        for anchor in ("查看模型技术数据", "查看数据血缘", "查看审计详情", "查看案例审计信息"):
+        for anchor in ("模型原始输出", "查看数据血缘", "查看审计详情", "查看案例审计信息", "查看技术 Trace"):
             self.assertIn(anchor, html, f"缺技术详情入口 {anchor}")
         # 技术字段仅存在于 JS 数据引用，不作为默认平铺大标题
         self.assertNotIn("model_signal_strength</h2>", html)

@@ -147,11 +147,11 @@ except Exception:  # pragma: no cover
 # 黄金案例（docs/mvp_demo_cases.md；全为真实 test 窗口数据）
 # ---------------------------------------------------------------------------
 GOLDEN_CASES: List[Dict[str, Any]] = [
-    {"id": "B",  "label": "案例 A｜正常 SELL 决策（预期 DA > RT）",  "decision_date": "2026-07-16", "node": "CONTROLX_1_N001", "hour": 3},
-    {"id": "C1", "label": "案例 B｜风控阻止交易（Risk Gate REJECT）", "decision_date": "2026-07-08", "node": "CONTROLX_1_N001", "hour": 2},
-    {"id": "C2", "label": "案例 C｜信号不足不交易（弱信号）",       "decision_date": "2026-07-10", "node": "SNLNDRO_1_N001",  "hour": 10},
-    {"id": "D",  "label": "案例 D｜模型判断错误（诚实展示）",       "decision_date": "2026-07-20", "node": "SNLNDRO_1_N001",  "hour": 20},
-    {"id": "E",  "label": "案例 E｜未来信息被拒绝（Time Gate）",    "decision_date": "2026-07-08", "node": "CONTROLX_1_N001", "hour": 2},
+    {"id": "B",  "label": "案例 A｜正常交易（SELL）",         "decision_date": "2026-07-16", "node": "CONTROLX_1_N001", "hour": 3},
+    {"id": "C1", "label": "案例 B｜Risk Gate 拦截",          "decision_date": "2026-07-08", "node": "CONTROLX_1_N001", "hour": 2},
+    {"id": "C2", "label": "案例 C｜信号不足不交易",          "decision_date": "2026-07-10", "node": "SNLNDRO_1_N001",  "hour": 10},
+    {"id": "D",  "label": "案例 D｜模型判断错误",            "decision_date": "2026-07-20", "node": "SNLNDRO_1_N001",  "hour": 20},
+    {"id": "E",  "label": "案例 E｜未来信息被拒绝",          "decision_date": "2026-07-08", "node": "CONTROLX_1_N001", "hour": 2},
 ]
 
 

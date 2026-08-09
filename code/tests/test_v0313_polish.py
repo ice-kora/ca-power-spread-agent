@@ -113,10 +113,11 @@ class V0313PolishTests(unittest.TestCase):
         d = r.get_json()["decision"]
         ctx = d["context"]
         self.assertTrue(ctx.get("market_rule_version"))
-        # 页面模板：S1 读取 c.market_rule_version（而非 m.versions.market_rule）
-        page = c.get("/").get_data(as_text=True)
-        self.assertIn("c.market_rule_version", page)
-        self.assertNotIn('m.versions.market_rule', page)
+        # V0.4：market_rule_version 在"技术详情 → 交易上下文"折叠内（来自 DecisionSnapshot.context）
+        src = (REPO_ROOT / "static" / "mvp_core.js").read_text(encoding="utf-8")
+        self.assertIn("market_rule_version", src)
+        self.assertIn("renderTechnical", src)
+        self.assertNotIn('m.versions.market_rule', src)
 
     # ============================================================= P2 / P3
     def test_p2_p3_date_aware_boundary_in_snapshot(self):
@@ -303,10 +304,12 @@ class V0313PolishTests(unittest.TestCase):
         self.assertIn(meta["data_mode"], (MODE_FULL, MODE_DEMO))
         self.assertIn(meta["evidence_mode_default"], ("HISTORICAL_SNAPSHOT", "LIVE"))
         page = c.get("/").get_data(as_text=True)
-        # 状态栏包含数据模式与证据模式（renderMvpStatus；中英双语标签）
-        self.assertIn("DATA MODE", page)
-        self.assertIn("EVIDENCE MODE", page)
-        # 决策上下文 S1 显示 evidence_mode（HISTORICAL_SNAPSHOT / LIVE / NONE）
+        src = (REPO_ROOT / "static" / "mvp_core.js").read_text(encoding="utf-8")
+        # V0.4：Header 紧凑系统状态（renderSysStatus 用中文"数据模式/证据模式"）
+        self.assertIn("数据模式", src)
+        self.assertIn("证据模式", src)
+        self.assertIn("renderSysStatus", src)
+        # 决策的技术详情（交易上下文）含 evidence_mode（HISTORICAL_SNAPSHOT / LIVE / NONE）
         r = c.post("/api/decision", json={"decision_date": DD, "node": NODE,
                                           "hour": HOUR, "evidence": "offline"})
         d = r.get_json()["decision"]
@@ -370,11 +373,11 @@ class V0313PolishTests(unittest.TestCase):
         pm = (REPO_ROOT / "prepare_mvp.py").read_text(encoding="utf-8")
         self.assertNotIn("V0.3.1.1", pm.split("main()")[1] if "main()" in pm else pm)
         self.assertIn("V0.3.1.2", pm)
-        # 页面 title / header 统一 Demo Freeze（无 V0.3.1.1）
+        # V0.4：页面主入口不铺版本号；版本号进"系统边界"（renderBoundary 用 web_version）
         page = mvp_web.app.test_client().get("/").get_data(as_text=True)
-        self.assertIn("Demo Freeze", page)
-        self.assertIn("V0.3.1.2", page)
         self.assertNotIn("V0.3.1.1", page)
+        src = (REPO_ROOT / "static" / "mvp_core.js").read_text(encoding="utf-8")
+        self.assertIn("web_version", src)
 
 
 # ---------------------------------------------------------------------------

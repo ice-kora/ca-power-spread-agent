@@ -65,11 +65,15 @@ class TestMvpWebV0311(unittest.TestCase):
         self.assertEqual(s.get("settlement"), "SIMPLIFIED SIGNAL BACKTEST")
         # V0.3.1.3：统一展示 Demo Freeze 版本（不再出现历史版本号）
         self.assertTrue(str(meta.get("web_version", "")).startswith("V0.3.1.2"))
-        # 首页静态 HTML 包含 MVP Status 容器与渲染函数（值由 /api/meta 动态填充）
+        # V0.4：Header 内紧凑系统状态（sys-grid / renderSysStatus），无巨大 MVP STATUS
         page = self.client.get("/").get_data(as_text=True)
-        self.assertIn('id="mvp-status"', page)
-        self.assertIn('id="mvp-status-grid"', page)
-        self.assertIn("renderMvpStatus", page)
+        self.assertIn('id="sys-grid"', page)
+        self.assertIn('id="llm-badge"', page)
+        self.assertIn("系统边界", page)
+        self.assertNotIn('id="mvp-status"', page)
+        src = (REPO_ROOT / "static" / "mvp_core.js").read_text(encoding="utf-8")
+        self.assertIn("renderSysStatus", src)
+        self.assertIn("openBoundary", src)
 
     # ------------------------------------------------------------- T2 Runtime Audit
     def test_t2_audit_panel_consumes_real_runtime_audit(self):

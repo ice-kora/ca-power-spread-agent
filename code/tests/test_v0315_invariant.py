@@ -171,7 +171,12 @@ class V0315InvariantTests(unittest.TestCase):
         self.assertNotIn("available_at or published_at", cli)
         web = (REPO_ROOT / "mvp_web.py").read_text(encoding="utf-8")
         self.assertNotIn("available_at or published_at", web)
-        html = (REPO_ROOT / "templates" / "mvp_index.html").read_text(encoding="utf-8")
+        html = "\n".join([
+            (REPO_ROOT / "templates" / "mvp_index.html").read_text(encoding="utf-8"),
+            (REPO_ROOT / "static" / "mvp_core.js").read_text(encoding="utf-8"),
+            (REPO_ROOT / "static" / "mvp_agent.js").read_text(encoding="utf-8"),
+            (REPO_ROOT / "static" / "mvp_evidence.js").read_text(encoding="utf-8"),
+        ])
         self.assertNotIn("e.available_at || e.published_at", html)
         self.assertIn("UNKNOWN / NOT PROVEN", html)   # 技术详情保留原始可用性表达
         self.assertIn("无法证明", html)                # 业务层：可用时间无法证明
