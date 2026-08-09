@@ -1,0 +1,3425 @@
+{
+  "meta": {
+    "module": "agent/case_library",
+    "version": "0.1",
+    "description": "Case Library：历史极端事件档案（检索用），≠ Rule Engine。全部为 test 窗口 2026-06-02~08-05 真实事件；decision_date=target_date-1。Event evidence 全部 UNCERTAIN（当前无真实外部数据源）。",
+    "source_files": [
+      "code/data/stage3/top_loss_events.csv",
+      "code/data/stage3/top_profit_events.csv",
+      "code/data/canonical.parquet"
+    ],
+    "case_count": 18,
+    "note": "LLM 仅做整理/解释，未做任何方向判断。"
+  },
+  "cases": [
+    {
+      "case_id": "CASE-0001",
+      "decision_date": "2026-07-16",
+      "node": "CONTROLX_1_N001",
+      "hour": 3,
+      "model_prediction": "BUY",
+      "expected_return": -67.80642374009334,
+      "confidence": 0.5622692211141112,
+      "available_information_at_decision_time": {
+        "spread_lag1": -79.2817,
+        "spread_lag2": 29.7021,
+        "spread_lag7": 0.8858999999999924,
+        "spread_mean7": -82.64824285714283,
+        "spread_mean14": -42.016728571428565,
+        "spread_mean30": 124.99366333333334,
+        "spread_std7": 76.22522932150525,
+        "spread_std14": 156.25472161918356,
+        "spread_std30": 386.6063125861032,
+        "spread_day_std_lag1": 70.71867899620123,
+        "spread_day_range_lag1": 335.8431,
+        "spread_day_max_lag1": 245.0268,
+        "da_day_mean_lag1": -38.8218625,
+        "rtpd_day_mean_lag1": 2.470495833333332,
+        "load_2da_forecast": 26520.56,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 21.94329833984375,
+        "ssrd_lag1": 0.0,
+        "wind100_lag1": 4.004123210906982,
+        "peer_spread_lag1": 3.5559999999999974,
+        "dow": 4,
+        "month": 7,
+        "hist_n": 924,
+        "hist_p90": 84.50172000000009,
+        "hist_p95": 309.7091049999992,
+        "hist_p99": 724.253376,
+        "hist_p995": 765.6739819999999,
+        "hist_min": -1080.679,
+        "hist_max": 1100.9507,
+        "cvar95": -201.6778695652174,
+        "cvar99": -450.2325666666667,
+        "vol7": 76.5108597754955,
+        "vol30": 380.8816849475104,
+        "extreme_count_30": 11,
+        "max_abs_30": 850.7055,
+        "lag1_pct": 0.0854978354978355,
+        "realized_pct": 1.0,
+        "node_bias_mean": 12.617780711298952,
+        "node_vol7": 136.59639639407976,
+        "node_max_abs_prev7": 803.0691,
+        "agreement": "1/3",
+        "type": "A",
+        "type_reason": "broken_buy(interpretable, conf=0.56)"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 BUY 执行，未做拦截，实际亏损 -2251.3 $/MWh。若应用 Risk Gate：会被 R7a REJECT（BUY_ON_POSITIVE_DRIFT_NODE）。",
+      "actual_DA": -48.4863,
+      "actual_RTPD": -2299.7905,
+      "actual_Return": 2251.3042,
+      "PnL": -2251.3042,
+      "why_correct_or_wrong": "模型押 Return<0 做 BUY_DA，但 RTPD 深跌至 -2299.8（负电价），Return 大幅转正 +2251.3，BUY 押反方向，单笔巨亏。机制：深夜/清晨可再生能源过剩 → RTPD 深度负电价。 属 Type A（PRE-TRADE DETECTABLE）：事前内部数据已有明确危险信号。",
+      "lessons": [
+        "CONTROLX BUY 逆 +84 漂移，train+val 无条件负期望（R7a 拦截对象）",
+        "confidence>=0.9 在 CONTROLX 上与 PnL 反相关（R1 置信度门已删除）",
+        "深夜/清晨负电价 regime 下 RTPD 可深跌至 -1000~-2365，单笔尾部达千级"
+      ],
+      "related_rules": [
+        "Type A (PRE-TRADE DETECTABLE)",
+        "R7a: CONTROLX BUY → REJECT"
+      ]
+    },
+    {
+      "case_id": "CASE-0002",
+      "decision_date": "2026-07-08",
+      "node": "CONTROLX_1_N001",
+      "hour": 2,
+      "model_prediction": "BUY",
+      "expected_return": -141.3016881312032,
+      "confidence": 0.9050924767496048,
+      "available_information_at_decision_time": {
+        "spread_lag1": 402.7064,
+        "spread_lag2": -104.9453,
+        "spread_lag7": -110.5301,
+        "spread_mean7": 37.62604285714286,
+        "spread_mean14": 111.44996428571427,
+        "spread_mean30": 178.50820000000002,
+        "spread_std7": 281.01486379739123,
+        "spread_std14": 341.702890044228,
+        "spread_std30": 331.95876369030816,
+        "spread_day_std_lag1": 381.8272456172704,
+        "spread_day_range_lag1": 1299.8287,
+        "spread_day_max_lag1": 1196.0994,
+        "da_day_mean_lag1": -148.73998333333336,
+        "rtpd_day_mean_lag1": -512.0587833333333,
+        "load_2da_forecast": 26176.94,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 18.677001953125,
+        "ssrd_lag1": 0.0,
+        "wind100_lag1": 3.39023232460022,
+        "peer_spread_lag1": 5.506300000000003,
+        "dow": 3,
+        "month": 7,
+        "hist_n": 919,
+        "hist_p90": 115.98240000000004,
+        "hist_p95": 329.49279999999874,
+        "hist_p99": 765.0149619999976,
+        "hist_p995": 800.1893869999999,
+        "hist_min": -672.6673000000001,
+        "hist_max": 945.2184,
+        "cvar95": -158.1506466666667,
+        "cvar99": -281.3390333333333,
+        "vol7": 265.4048693679836,
+        "vol30": 328.85433876550934,
+        "extreme_count_30": 11,
+        "max_abs_30": 806.458,
+        "lag1_pct": 0.9586507072905333,
+        "realized_pct": 1.0,
+        "node_bias_mean": 12.40030076190476,
+        "node_vol7": 303.2746464121189,
+        "node_max_abs_prev7": 1196.0994,
+        "agreement": "conflict",
+        "type": "A",
+        "type_reason": "conflict; extreme_state(lag1pct=0.96); broken_buy(interpretable, conf=0.91)"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 BUY 执行，未做拦截，实际亏损 -2216.3 $/MWh。若应用 Risk Gate：会被 R7a REJECT（BUY_ON_POSITIVE_DRIFT_NODE）；会被 R2 标记 MODEL_DISAGREEMENT。",
+      "actual_DA": -149.0314,
+      "actual_RTPD": -2365.3089,
+      "actual_Return": 2216.2775,
+      "PnL": -2216.2775,
+      "why_correct_or_wrong": "模型押 Return<0 做 BUY_DA，但 RTPD 深跌至 -2365.3（负电价），Return 大幅转正 +2216.3，BUY 押反方向，单笔巨亏。机制：深夜/清晨可再生能源过剩 → RTPD 深度负电价。 属 Type A（PRE-TRADE DETECTABLE）：事前内部数据已有明确危险信号。",
+      "lessons": [
+        "CONTROLX BUY 逆 +84 漂移，train+val 无条件负期望（R7a 拦截对象）",
+        "confidence>=0.9 在 CONTROLX 上与 PnL 反相关（R1 置信度门已删除）",
+        "深夜/清晨负电价 regime 下 RTPD 可深跌至 -1000~-2365，单笔尾部达千级"
+      ],
+      "related_rules": [
+        "Type A (PRE-TRADE DETECTABLE)",
+        "R2: MODEL_DISAGREEMENT",
+        "R7a: CONTROLX BUY → REJECT"
+      ]
+    },
+    {
+      "case_id": "CASE-0003",
+      "decision_date": "2026-07-06",
+      "node": "CONTROLX_1_N001",
+      "hour": 18,
+      "model_prediction": "BUY",
+      "expected_return": -68.09280789692497,
+      "confidence": 0.6434847766518839,
+      "available_information_at_decision_time": {
+        "spread_lag1": -69.16839999999999,
+        "spread_lag2": -69.0964,
+        "spread_lag7": -127.6609,
+        "spread_mean7": -265.8809,
+        "spread_mean14": -19.511921428571487,
+        "spread_mean30": 115.5608033333333,
+        "spread_std7": 395.2681204964302,
+        "spread_std14": 453.3014558937015,
+        "spread_std30": 435.2176525175527,
+        "spread_day_std_lag1": 44.09319244665007,
+        "spread_day_range_lag1": 231.9277,
+        "spread_day_max_lag1": 135.03609999999998,
+        "da_day_mean_lag1": -67.35517499999999,
+        "rtpd_day_mean_lag1": -11.743666666666668,
+        "load_2da_forecast": 33253.63,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 27.618804931640625,
+        "ssrd_lag1": 640.5177612304688,
+        "wind100_lag1": 3.5994908809661865,
+        "peer_spread_lag1": -6.2455,
+        "dow": 1,
+        "month": 7,
+        "hist_n": 914,
+        "hist_p90": 56.14172000000004,
+        "hist_p95": 268.79305499999884,
+        "hist_p99": 692.3957650000001,
+        "hist_p995": 759.7085689999991,
+        "hist_min": -1158.5871000000002,
+        "hist_max": 900.3154999999999,
+        "cvar95": -237.47884222222223,
+        "cvar99": -612.1227222222223,
+        "vol7": 372.85291522080223,
+        "vol30": 428.427035455503,
+        "extreme_count_30": 10,
+        "max_abs_30": 1158.5871000000002,
+        "lag1_pct": 0.111597374179431,
+        "realized_pct": 1.0,
+        "node_bias_mean": 11.676543955094992,
+        "node_vol7": 339.96387465827263,
+        "node_max_abs_prev7": 1304.6226,
+        "agreement": "2/3",
+        "type": "A",
+        "type_reason": "broken_buy(interpretable, conf=0.64)"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 BUY 执行，未做拦截，实际亏损 -1196.1 $/MWh。若应用 Risk Gate：会被 R7a REJECT（BUY_ON_POSITIVE_DRIFT_NODE）。",
+      "actual_DA": -150.0,
+      "actual_RTPD": -1346.0994,
+      "actual_Return": 1196.0994,
+      "PnL": -1196.0994,
+      "why_correct_or_wrong": "模型押 Return<0 做 BUY_DA，但 RTPD 深跌至 -1346.1（负电价），Return 大幅转正 +1196.1，BUY 押反方向，单笔巨亏。机制：深夜/清晨可再生能源过剩 → RTPD 深度负电价。 属 Type A（PRE-TRADE DETECTABLE）：事前内部数据已有明确危险信号。",
+      "lessons": [
+        "CONTROLX BUY 逆 +84 漂移，train+val 无条件负期望（R7a 拦截对象）",
+        "confidence>=0.9 在 CONTROLX 上与 PnL 反相关（R1 置信度门已删除）",
+        "深夜/清晨负电价 regime 下 RTPD 可深跌至 -1000~-2365，单笔尾部达千级"
+      ],
+      "related_rules": [
+        "Type A (PRE-TRADE DETECTABLE)",
+        "R7a: CONTROLX BUY → REJECT"
+      ]
+    },
+    {
+      "case_id": "CASE-0004",
+      "decision_date": "2026-06-29",
+      "node": "CONTROLX_1_N001",
+      "hour": 14,
+      "model_prediction": "SELL",
+      "expected_return": 185.88154926666667,
+      "confidence": 0.7666666666666666,
+      "available_information_at_decision_time": {
+        "spread_lag1": 20.52940000000001,
+        "spread_lag2": 758.478,
+        "spread_lag7": 506.5363,
+        "spread_mean7": 205.4756,
+        "spread_mean14": 421.24245,
+        "spread_mean30": 208.47622666666663,
+        "spread_std7": 346.0013990372294,
+        "spread_std14": 363.034966305497,
+        "spread_std30": 338.2830321006504,
+        "spread_day_std_lag1": 376.08277963872087,
+        "spread_day_range_lag1": 888.9804,
+        "spread_day_max_lag1": 742.1933,
+        "da_day_mean_lag1": -150.16332916666667,
+        "rtpd_day_mean_lag1": -470.25876249999993,
+        "load_2da_forecast": 19333.46,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 22.69125366210937,
+        "ssrd_lag1": 1014.9822387695312,
+        "wind100_lag1": 3.444952726364136,
+        "peer_spread_lag1": 0.1425999999999998,
+        "dow": 1,
+        "month": 6,
+        "hist_n": 910,
+        "hist_p90": 98.97218000000004,
+        "hist_p95": 326.54280499999965,
+        "hist_p99": 727.793766,
+        "hist_p995": 790.4568560000029,
+        "hist_min": -927.7983,
+        "hist_max": 1023.8776,
+        "cvar95": -214.93189333333328,
+        "cvar99": -573.3414666666667,
+        "vol7": 370.055752932354,
+        "vol30": 335.9816931186812,
+        "extreme_count_30": 9,
+        "max_abs_30": 828.7612,
+        "lag1_pct": 0.8373626373626374,
+        "realized_pct": 0.0,
+        "node_bias_mean": 13.203544174223689,
+        "node_vol7": 410.3242124689665,
+        "node_max_abs_prev7": 1076.3022,
+        "agreement": "conflict",
+        "type": "A",
+        "type_reason": "conflict"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 SELL 执行，未做拦截，实际亏损 -1175.1 $/MWh。若应用 Risk Gate：会被 R2 标记 MODEL_DISAGREEMENT；R4 已验证无法事前识别 CONTROLX SELL 的 DA 崩塌尾（gate 不覆盖）。",
+      "actual_DA": -1324.9388,
+      "actual_RTPD": -149.873,
+      "actual_Return": -1175.0658,
+      "PnL": -1175.0658,
+      "why_correct_or_wrong": "rule 押 Return>0 做 SELL_DA（expected_return 大正），但 DA 暴跌至 -1324.9（负电价），Return 转负 -1175.1，SELL 巨亏。机制：DA 单日负电价崩塌。 属 Type A（PRE-TRADE DETECTABLE）：事前内部数据已有明确危险信号。",
+      "lessons": [
+        "CONTROLX SELL 存在 DA 崩塌尾（如 06-30 DA -1313），Risk Gate 不覆盖",
+        "模型冲突（rule SELL vs ML BUY）是事前可见的硬信号（Type A）"
+      ],
+      "related_rules": [
+        "Type A (PRE-TRADE DETECTABLE)",
+        "R2: MODEL_DISAGREEMENT"
+      ]
+    },
+    {
+      "case_id": "CASE-0005",
+      "decision_date": "2026-07-23",
+      "node": "ELCAJNGT_7_N001",
+      "hour": 20,
+      "model_prediction": "SELL",
+      "expected_return": 57.51060866098488,
+      "confidence": 0.9673440010104656,
+      "available_information_at_decision_time": {
+        "spread_lag1": -681.9432,
+        "spread_lag2": -288.9707,
+        "spread_lag7": -339.1797,
+        "spread_mean7": -190.83217142857143,
+        "spread_mean14": -115.53917857142858,
+        "spread_mean30": -50.36485666666668,
+        "spread_std7": 261.3528248530947,
+        "spread_std14": 211.2391046878219,
+        "spread_std30": 156.14884801838735,
+        "spread_day_std_lag1": 193.1904875851495,
+        "spread_day_range_lag1": 681.3501,
+        "spread_day_max_lag1": -0.5931000000000068,
+        "da_day_mean_lag1": 91.46335416666666,
+        "rtpd_day_mean_lag1": 264.6858,
+        "load_2da_forecast": 40536.68,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 31.53118896484375,
+        "ssrd_lag1": 208.7888946533203,
+        "wind100_lag1": 5.346792221069336,
+        "dow": 4,
+        "month": 7,
+        "hist_n": 141,
+        "hist_p90": 26.676,
+        "hist_p95": 39.2872,
+        "hist_p99": 52.84227999999998,
+        "hist_p995": 58.287640000000174,
+        "hist_min": -681.9432,
+        "hist_max": 69.1312,
+        "cvar95": -271.5850285714286,
+        "cvar99": -681.9432,
+        "vol7": 246.10432117531988,
+        "vol30": 154.3664079108985,
+        "extreme_count_30": 4,
+        "max_abs_30": 681.9432,
+        "lag1_pct": 0.0,
+        "realized_pct": 0.0,
+        "node_bias_mean": -5.72814725177305,
+        "node_vol7": 118.80219585855652,
+        "node_max_abs_prev7": 681.9432,
+        "agreement": "2/3",
+        "type": "A",
+        "type_reason": "extreme_state(lag1pct=0.00); low_sample(n=141)"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "SP15",
+          "affected_nodes": [
+            "ELCAJNGT_7_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "SP15",
+          "affected_nodes": [
+            "ELCAJNGT_7_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "SP15",
+          "affected_nodes": [
+            "ELCAJNGT_7_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "SP15",
+          "affected_nodes": [
+            "ELCAJNGT_7_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "SP15",
+          "affected_nodes": [
+            "ELCAJNGT_7_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "SP15",
+          "affected_nodes": [
+            "ELCAJNGT_7_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "SP15",
+          "affected_nodes": [
+            "ELCAJNGT_7_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "SP15",
+          "affected_nodes": [
+            "ELCAJNGT_7_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 SELL 执行，未做拦截，实际亏损 -914.2 $/MWh。若应用 Risk Gate：会被 R6 REJECT（LOW_SAMPLE_SUPPORT）。",
+      "actual_DA": 188.3193,
+      "actual_RTPD": 1102.482,
+      "actual_Return": -914.1627,
+      "PnL": -914.1627,
+      "why_correct_or_wrong": "ELCA 晚间 RTPD 尖峰 +1102.5（气电稀缺），Return 转负 -914.2；决策时 spread 已处于历史低位/样本仅 141.0（低样本 cold-start）。 属 Type A（PRE-TRADE DETECTABLE）：事前内部数据已有明确危险信号。",
+      "lessons": [
+        "ELCA 历史样本 n<200，cold-start，统计不可靠（R6）"
+      ],
+      "related_rules": [
+        "Type A (PRE-TRADE DETECTABLE)",
+        "R6: LOW_SAMPLE_SUPPORT"
+      ]
+    },
+    {
+      "case_id": "CASE-0006",
+      "decision_date": "2026-06-14",
+      "node": "CONTROLX_1_N001",
+      "hour": 8,
+      "model_prediction": "BUY",
+      "expected_return": -47.89663163138477,
+      "confidence": 0.6640440416542759,
+      "available_information_at_decision_time": {
+        "spread_lag1": -0.4020999999999972,
+        "spread_lag2": -4.036099999999998,
+        "spread_lag7": -34.886,
+        "spread_mean7": 104.8949285714286,
+        "spread_mean14": 78.0779857142857,
+        "spread_mean30": 75.06401333333334,
+        "spread_std7": 250.41643384151627,
+        "spread_std14": 235.9422448462853,
+        "spread_std30": 240.78390416304933,
+        "spread_day_std_lag1": 21.360954539318964,
+        "spread_day_range_lag1": 64.1449,
+        "spread_day_max_lag1": 14.5562,
+        "da_day_mean_lag1": -21.7463125,
+        "rtpd_day_mean_lag1": 1.4560833333333336,
+        "load_2da_forecast": 25383.72,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 19.06658935546875,
+        "ssrd_lag1": 87.31444549560547,
+        "wind100_lag1": 0.8926340508460998,
+        "peer_spread_lag1": -6.484400000000001,
+        "dow": 0,
+        "month": 6,
+        "hist_n": 895,
+        "hist_p90": 76.71592000000001,
+        "hist_p95": 243.50984,
+        "hist_p99": 736.1841219999986,
+        "hist_p995": 797.543917,
+        "hist_min": -1263.443,
+        "hist_max": 941.7067,
+        "cvar95": -189.38888636363637,
+        "cvar99": -448.7911624999999,
+        "vol7": 237.7224030526268,
+        "vol30": 237.3000130041477,
+        "extreme_count_30": 4,
+        "max_abs_30": 760.2328,
+        "lag1_pct": 0.5810055865921788,
+        "realized_pct": 1.0,
+        "node_bias_mean": 6.658549073297942,
+        "node_vol7": 222.40946838918717,
+        "node_max_abs_prev7": 805.7479,
+        "agreement": "2/3",
+        "type": "C",
+        "type_reason": "tail_draw_no_specific_warning"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 BUY 执行，未做拦截，实际亏损 -1002.0 $/MWh。若应用 Risk Gate：会被 R7a REJECT（BUY_ON_POSITIVE_DRIFT_NODE）。",
+      "actual_DA": -66.6622,
+      "actual_RTPD": -1068.6202,
+      "actual_Return": 1001.958,
+      "PnL": -1001.958,
+      "why_correct_or_wrong": "模型押 Return<0 做 BUY_DA，但 RTPD 深跌至 -1068.6（负电价），Return 大幅转正 +1002.0，BUY 押反方向，单笔巨亏。机制：深夜/清晨可再生能源过剩 → RTPD 深度负电价。 属 Type C（RESIDUAL_TAIL_RISK）：无具体事前信号，已知肥尾上的随机落点。",
+      "lessons": [
+        "CONTROLX BUY 逆 +84 漂移，train+val 无条件负期望（R7a 拦截对象）",
+        "confidence>=0.9 在 CONTROLX 上与 PnL 反相关（R1 置信度门已删除）",
+        "深夜/清晨负电价 regime 下 RTPD 可深跌至 -1000~-2365，单笔尾部达千级",
+        "已知肥尾节点上的残余随机尾部，无具体事前信号；需尾部/CVaR 监控兜底"
+      ],
+      "related_rules": [
+        "Type C (RESIDUAL_TAIL_RISK)",
+        "R7a: CONTROLX BUY → REJECT"
+      ]
+    },
+    {
+      "case_id": "CASE-0007",
+      "decision_date": "2026-07-07",
+      "node": "CONTROLX_1_N001",
+      "hour": 21,
+      "model_prediction": "BUY",
+      "expected_return": -160.72576319206829,
+      "confidence": 0.957963929234519,
+      "available_information_at_decision_time": {
+        "spread_lag1": 658.8852,
+        "spread_lag2": -79.6071,
+        "spread_lag7": -1106.0293,
+        "spread_mean7": -156.68097142857135,
+        "spread_mean14": 9.72240714285715,
+        "spread_mean30": 160.76358,
+        "spread_std7": 513.1676301647561,
+        "spread_std14": 475.53679949434695,
+        "spread_std30": 450.0789625101443,
+        "spread_day_std_lag1": 358.1527546038191,
+        "spread_day_range_lag1": 978.2459,
+        "spread_day_max_lag1": 869.5414000000001,
+        "da_day_mean_lag1": -115.043075,
+        "rtpd_day_mean_lag1": -440.0289291666667,
+        "load_2da_forecast": 35438.23,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 23.7215576171875,
+        "ssrd_lag1": 91.76222229003906,
+        "wind100_lag1": 4.117132186889648,
+        "peer_spread_lag1": -8.742199999999997,
+        "dow": 2,
+        "month": 7,
+        "hist_n": 918,
+        "hist_p90": 74.70550000000013,
+        "hist_p95": 274.9848399999999,
+        "hist_p99": 819.4685680000001,
+        "hist_p995": 842.2299079999996,
+        "hist_min": -1106.0293,
+        "hist_max": 931.0855,
+        "cvar95": -229.07118888888888,
+        "cvar99": -544.0423,
+        "vol7": 475.2631484290902,
+        "vol30": 443.9146568794914,
+        "extreme_count_30": 11,
+        "max_abs_30": 1106.0293,
+        "lag1_pct": 0.9782135076252724,
+        "realized_pct": 1.0,
+        "node_bias_mean": 12.017932470716424,
+        "node_vol7": 231.0236955909384,
+        "node_max_abs_prev7": 869.5414000000001,
+        "agreement": "2/3",
+        "type": "A",
+        "type_reason": "extreme_state(lag1pct=0.98); broken_buy(interpretable, conf=0.96)"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 BUY 执行，未做拦截，实际亏损 -1075.8 $/MWh。若应用 Risk Gate：会被 R7a REJECT（BUY_ON_POSITIVE_DRIFT_NODE）。",
+      "actual_DA": -149.06,
+      "actual_RTPD": -1224.8111,
+      "actual_Return": 1075.7511,
+      "PnL": -1075.7511,
+      "why_correct_or_wrong": "模型押 Return<0 做 BUY_DA，但 RTPD 深跌至 -1224.8（负电价），Return 大幅转正 +1075.8，BUY 押反方向，单笔巨亏。机制：深夜/清晨可再生能源过剩 → RTPD 深度负电价。 属 Type A（PRE-TRADE DETECTABLE）：事前内部数据已有明确危险信号。",
+      "lessons": [
+        "CONTROLX BUY 逆 +84 漂移，train+val 无条件负期望（R7a 拦截对象）",
+        "confidence>=0.9 在 CONTROLX 上与 PnL 反相关（R1 置信度门已删除）",
+        "深夜/清晨负电价 regime 下 RTPD 可深跌至 -1000~-2365，单笔尾部达千级"
+      ],
+      "related_rules": [
+        "Type A (PRE-TRADE DETECTABLE)",
+        "R7a: CONTROLX BUY → REJECT"
+      ]
+    },
+    {
+      "case_id": "CASE-0008",
+      "decision_date": "2026-06-25",
+      "node": "CONTROLX_1_N001",
+      "hour": 5,
+      "model_prediction": "BUY",
+      "expected_return": -114.80914140145411,
+      "confidence": 0.969260299306689,
+      "available_information_at_decision_time": {
+        "spread_lag1": -0.0123000000000104,
+        "spread_lag2": -184.6026,
+        "spread_lag7": 671.4834000000001,
+        "spread_mean7": 315.5864285714286,
+        "spread_mean14": 198.36835,
+        "spread_mean30": 45.234330000000014,
+        "spread_std7": 388.0985956894148,
+        "spread_std14": 316.6986364393898,
+        "spread_std30": 272.500332898415,
+        "spread_day_std_lag1": 209.59545360504376,
+        "spread_day_range_lag1": 974.7117,
+        "spread_day_max_lag1": 787.2955,
+        "da_day_mean_lag1": -150.0592375,
+        "rtpd_day_mean_lag1": -96.28860416666669,
+        "load_2da_forecast": 22386.46,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 17.95819091796875,
+        "ssrd_lag1": 0.0,
+        "wind100_lag1": 1.435499668121338,
+        "peer_spread_lag1": 0.8618999999999986,
+        "dow": 4,
+        "month": 6,
+        "hist_n": 906,
+        "hist_p90": 70.43595,
+        "hist_p95": 247.7108,
+        "hist_p99": 720.9353650000023,
+        "hist_p995": 791.082475,
+        "hist_min": -987.231,
+        "hist_max": 951.5327,
+        "cvar95": -195.0684955555556,
+        "cvar99": -423.1496888888889,
+        "vol7": 374.639366618271,
+        "vol30": 268.6492766372821,
+        "extreme_count_30": 6,
+        "max_abs_30": 794.2532,
+        "lag1_pct": 0.5960264900662252,
+        "realized_pct": 1.0,
+        "node_bias_mean": 11.245761008372437,
+        "node_vol7": 453.28091190717873,
+        "node_max_abs_prev7": 1076.3022,
+        "agreement": "2/3",
+        "type": "A",
+        "type_reason": "broken_buy(interpretable, conf=0.97)"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 BUY 执行，未做拦截，实际亏损 -1039.2 $/MWh。若应用 Risk Gate：会被 R7a REJECT（BUY_ON_POSITIVE_DRIFT_NODE）。",
+      "actual_DA": -211.3879,
+      "actual_RTPD": -1250.5569,
+      "actual_Return": 1039.169,
+      "PnL": -1039.169,
+      "why_correct_or_wrong": "模型押 Return<0 做 BUY_DA，但 RTPD 深跌至 -1250.6（负电价），Return 大幅转正 +1039.2，BUY 押反方向，单笔巨亏。机制：深夜/清晨可再生能源过剩 → RTPD 深度负电价。 属 Type A（PRE-TRADE DETECTABLE）：事前内部数据已有明确危险信号。",
+      "lessons": [
+        "CONTROLX BUY 逆 +84 漂移，train+val 无条件负期望（R7a 拦截对象）",
+        "confidence>=0.9 在 CONTROLX 上与 PnL 反相关（R1 置信度门已删除）",
+        "深夜/清晨负电价 regime 下 RTPD 可深跌至 -1000~-2365，单笔尾部达千级"
+      ],
+      "related_rules": [
+        "Type A (PRE-TRADE DETECTABLE)",
+        "R7a: CONTROLX BUY → REJECT"
+      ]
+    },
+    {
+      "case_id": "CASE-0009",
+      "decision_date": "2026-06-16",
+      "node": "CONTROLX_1_N001",
+      "hour": 16,
+      "model_prediction": "BUY",
+      "expected_return": -129.17459316180094,
+      "confidence": 0.9853755748808156,
+      "available_information_at_decision_time": {
+        "spread_lag1": 70.8785,
+        "spread_lag2": -22.5897,
+        "spread_lag7": -705.6559000000001,
+        "spread_mean7": -117.30914285714282,
+        "spread_mean14": -12.303435714285737,
+        "spread_mean30": -10.372576666666664,
+        "spread_std7": 262.69901153419465,
+        "spread_std14": 266.5932677746976,
+        "spread_std30": 192.4683541112501,
+        "spread_day_std_lag1": 373.47618791110216,
+        "spread_day_range_lag1": 1031.4618,
+        "spread_day_max_lag1": 1001.958,
+        "da_day_mean_lag1": -35.93628333333333,
+        "rtpd_day_mean_lag1": -455.7012083333333,
+        "load_2da_forecast": 28438.89,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 28.589111328125,
+        "ssrd_lag1": 920.0111083984376,
+        "wind100_lag1": 2.2628369665145875,
+        "peer_spread_lag1": 5.573500000000003,
+        "dow": 2,
+        "month": 6,
+        "hist_n": 897,
+        "hist_p90": 38.91415999999992,
+        "hist_p95": 172.24311999999995,
+        "hist_p99": 627.6385999999995,
+        "hist_p995": 732.9134319999996,
+        "hist_min": -1158.7161,
+        "hist_max": 1080.5314,
+        "cvar95": -221.93727954545452,
+        "cvar99": -664.5645375,
+        "vol7": 358.36949808591214,
+        "vol30": 189.23340240886395,
+        "extreme_count_30": 3,
+        "max_abs_30": 705.6559000000001,
+        "lag1_pct": 0.910813823857302,
+        "realized_pct": 0.9988851727982164,
+        "node_bias_mean": 7.2245782362234,
+        "node_vol7": 251.43155506071145,
+        "node_max_abs_prev7": 1001.958,
+        "agreement": "2/3",
+        "type": "A",
+        "type_reason": "broken_buy(interpretable, conf=0.99)"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 BUY 执行，未做拦截，实际亏损 -895.8 $/MWh。若应用 Risk Gate：会被 R7a REJECT（BUY_ON_POSITIVE_DRIFT_NODE）。",
+      "actual_DA": -149.6712,
+      "actual_RTPD": -1045.492,
+      "actual_Return": 895.8208,
+      "PnL": -895.8208,
+      "why_correct_or_wrong": "模型押 Return<0 做 BUY_DA，但 RTPD 深跌至 -1045.5（负电价），Return 大幅转正 +895.8，BUY 押反方向，单笔巨亏。机制：深夜/清晨可再生能源过剩 → RTPD 深度负电价。 属 Type A（PRE-TRADE DETECTABLE）：事前内部数据已有明确危险信号。",
+      "lessons": [
+        "CONTROLX BUY 逆 +84 漂移，train+val 无条件负期望（R7a 拦截对象）",
+        "confidence>=0.9 在 CONTROLX 上与 PnL 反相关（R1 置信度门已删除）",
+        "深夜/清晨负电价 regime 下 RTPD 可深跌至 -1000~-2365，单笔尾部达千级"
+      ],
+      "related_rules": [
+        "Type A (PRE-TRADE DETECTABLE)",
+        "R7a: CONTROLX BUY → REJECT"
+      ]
+    },
+    {
+      "case_id": "CASE-0010",
+      "decision_date": "2026-06-29",
+      "node": "CONTROLX_1_N001",
+      "hour": 8,
+      "model_prediction": "SELL",
+      "expected_return": 333.9263365095238,
+      "confidence": 0.94,
+      "available_information_at_decision_time": {
+        "spread_lag1": 678.5915,
+        "spread_lag2": 686.8982,
+        "spread_lag7": -416.0232,
+        "spread_mean7": 149.1894428571429,
+        "spread_mean14": 442.4596285714285,
+        "spread_mean30": 270.9789866666667,
+        "spread_std7": 431.5124501510352,
+        "spread_std14": 438.0849884371162,
+        "spread_std30": 401.1750904590935,
+        "spread_day_std_lag1": 376.08277963872087,
+        "spread_day_range_lag1": 888.9804,
+        "spread_day_max_lag1": 742.1933,
+        "da_day_mean_lag1": -150.16332916666667,
+        "rtpd_day_mean_lag1": -470.25876249999993,
+        "load_2da_forecast": 23567.24,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 13.37982177734375,
+        "ssrd_lag1": 92.36111450195312,
+        "wind100_lag1": 3.193267583847046,
+        "peer_spread_lag1": 1.0735,
+        "dow": 1,
+        "month": 6,
+        "hist_n": 910,
+        "hist_p90": 95.02288,
+        "hist_p95": 317.48323999999934,
+        "hist_p99": 791.8381079999992,
+        "hist_p995": 832.151058000001,
+        "hist_min": -1263.443,
+        "hist_max": 1001.958,
+        "cvar95": -197.73475777777776,
+        "cvar99": -445.1502777777777,
+        "vol7": 455.9987803406227,
+        "vol30": 399.4922958895665,
+        "extreme_count_30": 13,
+        "max_abs_30": 1001.958,
+        "lag1_pct": 0.9769230769230768,
+        "realized_pct": 0.001098901098901,
+        "node_bias_mean": 13.203544174223689,
+        "node_vol7": 410.3242124689665,
+        "node_max_abs_prev7": 1076.3022,
+        "agreement": "conflict",
+        "type": "A",
+        "type_reason": "conflict; extreme_state(lag1pct=0.98)"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 SELL 执行，未做拦截，实际亏损 -893.8 $/MWh。若应用 Risk Gate：会被 R2 标记 MODEL_DISAGREEMENT；R4 已验证无法事前识别 CONTROLX SELL 的 DA 崩塌尾（gate 不覆盖）。",
+      "actual_DA": -1043.8098,
+      "actual_RTPD": -150.0014,
+      "actual_Return": -893.8084,
+      "PnL": -893.8084,
+      "why_correct_or_wrong": "rule 押 Return>0 做 SELL_DA（expected_return 大正），但 DA 暴跌至 -1043.8（负电价），Return 转负 -893.8，SELL 巨亏。机制：DA 单日负电价崩塌。 属 Type A（PRE-TRADE DETECTABLE）：事前内部数据已有明确危险信号。",
+      "lessons": [
+        "CONTROLX SELL 存在 DA 崩塌尾（如 06-30 DA -1313），Risk Gate 不覆盖",
+        "模型冲突（rule SELL vs ML BUY）是事前可见的硬信号（Type A）"
+      ],
+      "related_rules": [
+        "Type A (PRE-TRADE DETECTABLE)",
+        "R2: MODEL_DISAGREEMENT"
+      ]
+    },
+    {
+      "case_id": "CASE-0011",
+      "decision_date": "2026-06-14",
+      "node": "CONTROLX_1_N001",
+      "hour": 10,
+      "model_prediction": "BUY",
+      "expected_return": -35.79992136515037,
+      "confidence": 0.7465716638372162,
+      "available_information_at_decision_time": {
+        "spread_lag1": -1.6248000000000005,
+        "spread_lag2": -45.57040000000001,
+        "spread_lag7": -31.148000000000003,
+        "spread_mean7": 96.98575714285714,
+        "spread_mean14": 35.99170714285712,
+        "spread_mean30": 23.40038666666666,
+        "spread_std7": 298.08717941444,
+        "spread_std14": 212.25461786169956,
+        "spread_std30": 187.37740999953243,
+        "spread_day_std_lag1": 21.360954539318964,
+        "spread_day_range_lag1": 64.1449,
+        "spread_day_max_lag1": 14.5562,
+        "da_day_mean_lag1": -21.7463125,
+        "rtpd_day_mean_lag1": 1.4560833333333336,
+        "load_2da_forecast": 24513.94,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 23.272491455078125,
+        "ssrd_lag1": 452.0933227539063,
+        "wind100_lag1": 1.2636982750892638,
+        "peer_spread_lag1": -14.9593,
+        "dow": 0,
+        "month": 6,
+        "hist_n": 895,
+        "hist_p90": 39.79496000000004,
+        "hist_p95": 196.59672999999967,
+        "hist_p99": 757.9285639999995,
+        "hist_p995": 806.126529,
+        "hist_min": -1085.4124,
+        "hist_max": 1453.0740999999998,
+        "cvar95": -229.3772909090908,
+        "cvar99": -688.5357750000001,
+        "vol7": 279.62601048747973,
+        "vol30": 184.4456850873985,
+        "extreme_count_30": 2,
+        "max_abs_30": 767.8591,
+        "lag1_pct": 0.6458100558659218,
+        "realized_pct": 0.9988826815642458,
+        "node_bias_mean": 6.658549073297942,
+        "node_vol7": 222.40946838918717,
+        "node_max_abs_prev7": 805.7479,
+        "agreement": "2/3",
+        "type": "C",
+        "type_reason": "tail_draw_no_specific_warning"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 BUY 执行，未做拦截，实际亏损 -933.6 $/MWh。若应用 Risk Gate：会被 R7a REJECT（BUY_ON_POSITIVE_DRIFT_NODE）。",
+      "actual_DA": -37.9256,
+      "actual_RTPD": -971.5567,
+      "actual_Return": 933.6311,
+      "PnL": -933.6311,
+      "why_correct_or_wrong": "模型押 Return<0 做 BUY_DA，但 RTPD 深跌至 -971.6（负电价），Return 大幅转正 +933.6，BUY 押反方向，单笔巨亏。机制：深夜/清晨可再生能源过剩 → RTPD 深度负电价。 属 Type C（RESIDUAL_TAIL_RISK）：无具体事前信号，已知肥尾上的随机落点。",
+      "lessons": [
+        "CONTROLX BUY 逆 +84 漂移，train+val 无条件负期望（R7a 拦截对象）",
+        "confidence>=0.9 在 CONTROLX 上与 PnL 反相关（R1 置信度门已删除）",
+        "深夜/清晨负电价 regime 下 RTPD 可深跌至 -1000~-2365，单笔尾部达千级",
+        "已知肥尾节点上的残余随机尾部，无具体事前信号；需尾部/CVaR 监控兜底"
+      ],
+      "related_rules": [
+        "Type C (RESIDUAL_TAIL_RISK)",
+        "R7a: CONTROLX BUY → REJECT"
+      ]
+    },
+    {
+      "case_id": "CASE-0012",
+      "decision_date": "2026-07-06",
+      "node": "CONTROLX_1_N001",
+      "hour": 20,
+      "model_prediction": "BUY",
+      "expected_return": -67.81803495679686,
+      "confidence": 0.572394102416099,
+      "available_information_at_decision_time": {
+        "spread_lag1": -65.1525,
+        "spread_lag2": -70.2262,
+        "spread_lag7": -132.54049999999998,
+        "spread_mean7": -255.0089285714286,
+        "spread_mean14": -23.551821428571422,
+        "spread_mean30": 150.59849666666665,
+        "spread_std7": 355.8235066914857,
+        "spread_std14": 423.9753754883125,
+        "spread_std30": 426.1609204516404,
+        "spread_day_std_lag1": 44.09319244665007,
+        "spread_day_range_lag1": 231.9277,
+        "spread_day_max_lag1": 135.03609999999998,
+        "da_day_mean_lag1": -67.35517499999999,
+        "rtpd_day_mean_lag1": -11.743666666666668,
+        "load_2da_forecast": 34786.84,
+        "load_peak_flag": 1.0,
+        "t2m_lag1": 25.479705810546875,
+        "ssrd_lag1": 267.8711242675781,
+        "wind100_lag1": 3.877792835235596,
+        "peer_spread_lag1": 7.427099999999996,
+        "dow": 1,
+        "month": 7,
+        "hist_n": 917,
+        "hist_p90": 62.56627999999998,
+        "hist_p95": 185.6374799999992,
+        "hist_p99": 791.2066600000002,
+        "hist_p995": 848.4234499999993,
+        "hist_min": -1077.7107,
+        "hist_max": 1096.6437,
+        "cvar95": -231.12595777777784,
+        "cvar99": -553.8419666666666,
+        "vol7": 333.95125323215746,
+        "vol30": 420.16129757335216,
+        "extreme_count_30": 11,
+        "max_abs_30": 1056.879,
+        "lag1_pct": 0.1264994547437295,
+        "realized_pct": 1.0,
+        "node_bias_mean": 11.676543955094992,
+        "node_vol7": 339.96387465827263,
+        "node_max_abs_prev7": 1304.6226,
+        "agreement": "2/3",
+        "type": "A",
+        "type_reason": "broken_buy(interpretable, conf=0.57)"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 BUY 执行，未做拦截，实际亏损 -1180.7 $/MWh。若应用 Risk Gate：会被 R7a REJECT（BUY_ON_POSITIVE_DRIFT_NODE）。",
+      "actual_DA": -147.0496,
+      "actual_RTPD": -1327.7035,
+      "actual_Return": 1180.6539,
+      "PnL": -1180.6539,
+      "why_correct_or_wrong": "模型押 Return<0 做 BUY_DA，但 RTPD 深跌至 -1327.7（负电价），Return 大幅转正 +1180.7，BUY 押反方向，单笔巨亏。机制：深夜/清晨可再生能源过剩 → RTPD 深度负电价。 属 Type A（PRE-TRADE DETECTABLE）：事前内部数据已有明确危险信号。",
+      "lessons": [
+        "CONTROLX BUY 逆 +84 漂移，train+val 无条件负期望（R7a 拦截对象）",
+        "confidence>=0.9 在 CONTROLX 上与 PnL 反相关（R1 置信度门已删除）",
+        "深夜/清晨负电价 regime 下 RTPD 可深跌至 -1000~-2365，单笔尾部达千级"
+      ],
+      "related_rules": [
+        "Type A (PRE-TRADE DETECTABLE)",
+        "R7a: CONTROLX BUY → REJECT"
+      ]
+    },
+    {
+      "case_id": "CASE-0013",
+      "decision_date": "2026-07-08",
+      "node": "CONTROLX_1_N001",
+      "hour": 2,
+      "model_prediction": "SELL",
+      "expected_return": 180.3181895,
+      "confidence": 0.8233333333333333,
+      "available_information_at_decision_time": {
+        "spread_lag1": 402.7064,
+        "spread_lag2": -104.9453,
+        "spread_lag7": -110.5301,
+        "spread_mean7": 37.62604285714286,
+        "spread_mean14": 111.44996428571427,
+        "spread_mean30": 178.50820000000002,
+        "spread_std7": 281.01486379739123,
+        "spread_std14": 341.702890044228,
+        "spread_std30": 331.95876369030816,
+        "spread_day_std_lag1": 381.8272456172704,
+        "spread_day_range_lag1": 1299.8287,
+        "spread_day_max_lag1": 1196.0994,
+        "da_day_mean_lag1": -148.73998333333336,
+        "rtpd_day_mean_lag1": -512.0587833333333,
+        "load_2da_forecast": 26176.94,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 18.677001953125,
+        "ssrd_lag1": 0.0,
+        "wind100_lag1": 3.39023232460022,
+        "peer_spread_lag1": 5.506300000000003,
+        "dow": 3,
+        "month": 7,
+        "ret_z_hist": 13.040643981878372,
+        "ret_pct_hist": 0.9998681028797538,
+        "spread_lag1_pct_node": 0.9608638166593212,
+        "da_lag1": -148.6278,
+        "rtpd_lag1": -551.3342,
+        "da_lag2": -83.5955,
+        "rtpd_lag2": 21.3498,
+        "da_lag7": -150.0,
+        "rtpd_lag7": -39.4699,
+        "spread_day_mean_lag1": 363.3188,
+        "load_actual_lag1": 25437.0,
+        "load_actual_day_mean_lag1": 29868.58333333333,
+        "peer_da_lag1": 39.8408,
+        "peer_rtpd_lag1": 34.3345,
+        "is_holiday": 0,
+        "solar_flag": 0,
+        "zone": "ZP26"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 SELL 执行并盈利 +2216.3 $/MWh。但该盈利依赖极端尾部行情，属不可复现的彩票结构，不构成可外推的预测能力。",
+      "actual_DA": -149.0314,
+      "actual_RTPD": -2365.3089,
+      "actual_Return": 2216.2775,
+      "PnL": 2216.2775,
+      "why_correct_or_wrong": "DA 贴负地板 -149.0 而 RTPD 深跌至 -2365.3，Return 大正 +2216.3，SELL_DA 得利。本质：负电价行情右侧，RTPD 比 DA 更深地贴地板。",
+      "lessons": [
+        "收益 99% 来自 |return|>500 的极端行，彩票式抓尾部，不可复现",
+        "盈利与亏损是同一肥尾分布的两侧：同一批 node/hour 既大赚又大亏",
+        "高 confidence 是'行情持续'的机械产物，不是事件识别力"
+      ],
+      "related_rules": [
+        "Profit 分析：彩票式尾部收益（不可外推）"
+      ]
+    },
+    {
+      "case_id": "CASE-0014",
+      "decision_date": "2026-06-29",
+      "node": "CONTROLX_1_N001",
+      "hour": 19,
+      "model_prediction": "BUY",
+      "expected_return": -136.29473203307506,
+      "confidence": 0.9479605380368632,
+      "available_information_at_decision_time": {
+        "spread_lag1": -146.7871,
+        "spread_lag2": 746.7189,
+        "spread_lag7": -175.8485,
+        "spread_mean7": 207.8740857142857,
+        "spread_mean14": 321.86369285714284,
+        "spread_mean30": 124.6538,
+        "spread_std7": 470.7182806377521,
+        "spread_std14": 362.6352198471659,
+        "spread_std30": 308.8306019155846,
+        "spread_day_std_lag1": 376.08277963872087,
+        "spread_day_range_lag1": 888.9804,
+        "spread_day_max_lag1": 742.1933,
+        "da_day_mean_lag1": -150.16332916666667,
+        "rtpd_day_mean_lag1": -470.25876249999993,
+        "load_2da_forecast": 28644.56,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 22.60577392578125,
+        "ssrd_lag1": 506.04888916015625,
+        "wind100_lag1": 5.058562755584717,
+        "peer_spread_lag1": -0.6343000000000014,
+        "dow": 1,
+        "month": 6,
+        "ret_z_hist": -7.790153823608551,
+        "ret_pct_hist": 0.0001318971202462,
+        "spread_lag1_pct_node": 0.0257382106654914,
+        "da_lag1": -150.0012,
+        "rtpd_lag1": -3.2141,
+        "da_lag2": -150.0,
+        "rtpd_lag2": -896.7189,
+        "da_lag7": -152.3893,
+        "rtpd_lag7": 23.4592,
+        "spread_day_mean_lag1": 320.09543333333335,
+        "load_actual_lag1": 26414.0,
+        "load_actual_day_mean_lag1": 23698.791666666668,
+        "peer_da_lag1": 12.1626,
+        "peer_rtpd_lag1": 12.7969,
+        "is_holiday": 0,
+        "solar_flag": 0,
+        "zone": "ZP26"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 BUY 执行并盈利 +1304.6 $/MWh。但该盈利依赖极端尾部行情，属不可复现的彩票结构，不构成可外推的预测能力。",
+      "actual_DA": -1294.8533,
+      "actual_RTPD": 9.7693,
+      "actual_Return": -1304.6226,
+      "PnL": 1304.6226,
+      "why_correct_or_wrong": "DA 单日崩盘至 -1294.9 而 RTPD 保持 +9.8，Return 大负 -1304.6，BUY_DA 得利。本质：DA 崩盘日单日事件。",
+      "lessons": [
+        "收益 99% 来自 |return|>500 的极端行，彩票式抓尾部，不可复现",
+        "盈利与亏损是同一肥尾分布的两侧：同一批 node/hour 既大赚又大亏",
+        "高 confidence 是'行情持续'的机械产物，不是事件识别力"
+      ],
+      "related_rules": [
+        "R7a: CONTROLX BUY → REJECT",
+        "Profit 分析：彩票式尾部收益（不可外推）"
+      ]
+    },
+    {
+      "case_id": "CASE-0015",
+      "decision_date": "2026-06-29",
+      "node": "CONTROLX_1_N001",
+      "hour": 14,
+      "model_prediction": "BUY",
+      "expected_return": -154.77761877857276,
+      "confidence": 0.9691728243080752,
+      "available_information_at_decision_time": {
+        "spread_lag1": 20.52940000000001,
+        "spread_lag2": 758.478,
+        "spread_lag7": 506.5363,
+        "spread_mean7": 205.4756,
+        "spread_mean14": 421.24245,
+        "spread_mean30": 208.47622666666663,
+        "spread_std7": 346.0013990372294,
+        "spread_std14": 363.034966305497,
+        "spread_std30": 338.2830321006504,
+        "spread_day_std_lag1": 376.08277963872087,
+        "spread_day_range_lag1": 888.9804,
+        "spread_day_max_lag1": 742.1933,
+        "da_day_mean_lag1": -150.16332916666667,
+        "rtpd_day_mean_lag1": -470.25876249999993,
+        "load_2da_forecast": 19333.46,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 22.69125366210937,
+        "ssrd_lag1": 1014.9822387695312,
+        "wind100_lag1": 3.444952726364136,
+        "peer_spread_lag1": 0.1425999999999998,
+        "dow": 1,
+        "month": 6,
+        "ret_z_hist": -7.023653375292536,
+        "ret_pct_hist": 0.0002198285337436,
+        "spread_lag1_pct_node": 0.850110180696342,
+        "da_lag1": -150.3566,
+        "rtpd_lag1": -170.886,
+        "da_lag2": -150.1761,
+        "rtpd_lag2": -908.6541,
+        "da_lag7": -151.3782,
+        "rtpd_lag7": -657.9145,
+        "spread_day_mean_lag1": 320.09543333333335,
+        "load_actual_lag1": 22270.0,
+        "load_actual_day_mean_lag1": 23698.791666666668,
+        "peer_da_lag1": -11.5472,
+        "peer_rtpd_lag1": -11.6898,
+        "is_holiday": 0,
+        "solar_flag": 1,
+        "zone": "ZP26"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 BUY 执行并盈利 +1175.1 $/MWh。但该盈利依赖极端尾部行情，属不可复现的彩票结构，不构成可外推的预测能力。",
+      "actual_DA": -1324.9388,
+      "actual_RTPD": -149.873,
+      "actual_Return": -1175.0658,
+      "PnL": 1175.0658,
+      "why_correct_or_wrong": "DA 单日崩盘至 -1324.9 而 RTPD 保持 -149.9，Return 大负 -1175.1，BUY_DA 得利。本质：DA 崩盘日单日事件。",
+      "lessons": [
+        "收益 99% 来自 |return|>500 的极端行，彩票式抓尾部，不可复现",
+        "盈利与亏损是同一肥尾分布的两侧：同一批 node/hour 既大赚又大亏",
+        "高 confidence 是'行情持续'的机械产物，不是事件识别力"
+      ],
+      "related_rules": [
+        "R7a: CONTROLX BUY → REJECT",
+        "Profit 分析：彩票式尾部收益（不可外推）"
+      ]
+    },
+    {
+      "case_id": "CASE-0016",
+      "decision_date": "2026-06-22",
+      "node": "CONTROLX_1_N001",
+      "hour": 4,
+      "model_prediction": "BUY",
+      "expected_return": -200.17996914303416,
+      "confidence": 0.9792972887135548,
+      "available_information_at_decision_time": {
+        "spread_lag1": 785.7689,
+        "spread_lag2": 871.9908,
+        "spread_lag7": 2.368900000000004,
+        "spread_mean7": 526.539442857143,
+        "spread_mean14": 293.20169285714286,
+        "spread_mean30": 118.09874,
+        "spread_std7": 414.52582695610937,
+        "spread_std14": 397.0816809252773,
+        "spread_std30": 317.1053711235288,
+        "spread_day_std_lag1": 137.27738317764073,
+        "spread_day_range_lag1": 476.3837,
+        "spread_day_max_lag1": 862.064,
+        "da_day_mean_lag1": -150.04776666666666,
+        "rtpd_day_mean_lag1": -820.447275,
+        "load_2da_forecast": 22299.29,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 15.522796630859377,
+        "ssrd_lag1": 0.0,
+        "wind100_lag1": 2.905804395675659,
+        "peer_spread_lag1": 6.391100000000002,
+        "dow": 1,
+        "month": 6,
+        "ret_z_hist": -6.439335580492851,
+        "ret_pct_hist": 0.0011870740822158,
+        "spread_lag1_pct_node": 0.9901278096077568,
+        "da_lag1": -150.0,
+        "rtpd_lag1": -935.7689,
+        "da_lag2": -150.0,
+        "rtpd_lag2": -1021.9908,
+        "da_lag7": -38.9732,
+        "rtpd_lag7": -41.3421,
+        "spread_day_mean_lag1": 670.3995083333333,
+        "load_actual_lag1": 21125.0,
+        "load_actual_day_mean_lag1": 24327.5,
+        "peer_da_lag1": 19.8088,
+        "peer_rtpd_lag1": 13.4177,
+        "is_holiday": 0,
+        "solar_flag": 0,
+        "zone": "ZP26"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 BUY 执行并盈利 +1076.3 $/MWh。但该盈利依赖极端尾部行情，属不可复现的彩票结构，不构成可外推的预测能力。",
+      "actual_DA": -1052.2997,
+      "actual_RTPD": 24.0025,
+      "actual_Return": -1076.3022,
+      "PnL": 1076.3022,
+      "why_correct_or_wrong": "DA 单日崩盘至 -1052.3 而 RTPD 保持 +24.0，Return 大负 -1076.3，BUY_DA 得利。本质：DA 崩盘日单日事件。",
+      "lessons": [
+        "收益 99% 来自 |return|>500 的极端行，彩票式抓尾部，不可复现",
+        "盈利与亏损是同一肥尾分布的两侧：同一批 node/hour 既大赚又大亏",
+        "高 confidence 是'行情持续'的机械产物，不是事件识别力"
+      ],
+      "related_rules": [
+        "R7a: CONTROLX BUY → REJECT",
+        "Profit 分析：彩票式尾部收益（不可外推）"
+      ]
+    },
+    {
+      "case_id": "CASE-0017",
+      "decision_date": "2026-06-19",
+      "node": "CONTROLX_1_N001",
+      "hour": 9,
+      "model_prediction": "SELL",
+      "expected_return": 430.1999911285714,
+      "confidence": 0.7066666666666667,
+      "available_information_at_decision_time": {
+        "spread_lag1": 796.4741,
+        "spread_lag2": 507.37070000000006,
+        "spread_lag7": -63.0216,
+        "spread_mean7": 381.3911142857143,
+        "spread_mean14": 244.9911142857143,
+        "spread_mean30": 151.23895333333334,
+        "spread_std7": 387.8181968986904,
+        "spread_std14": 352.3420047060435,
+        "spread_std30": 328.8563312992099,
+        "spread_day_std_lag1": 154.4803229886511,
+        "spread_day_range_lag1": 691.1528,
+        "spread_day_max_lag1": 862.7338,
+        "da_day_mean_lag1": -110.07264583333334,
+        "rtpd_day_mean_lag1": -826.6375791666666,
+        "load_2da_forecast": 20099.78,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 19.16796875,
+        "ssrd_lag1": 233.6377716064453,
+        "wind100_lag1": 1.240117430686951,
+        "peer_spread_lag1": -22.4912,
+        "dow": 5,
+        "month": 6,
+        "ret_z_hist": 5.562397248228593,
+        "ret_pct_hist": 0.9987249945042866,
+        "spread_lag1_pct_node": 0.99118554429264,
+        "da_lag1": -149.6749,
+        "rtpd_lag1": -946.149,
+        "da_lag2": -150.001,
+        "rtpd_lag2": -657.3717,
+        "da_lag7": -45.0019,
+        "rtpd_lag7": 18.0197,
+        "spread_day_mean_lag1": 716.5649333333334,
+        "load_actual_lag1": 30557.0,
+        "load_actual_day_mean_lag1": 28358.95833333333,
+        "peer_da_lag1": 13.823,
+        "peer_rtpd_lag1": 36.3142,
+        "is_holiday": 0,
+        "solar_flag": 0,
+        "zone": "ZP26"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 SELL 执行并盈利 +952.3 $/MWh。但该盈利依赖极端尾部行情，属不可复现的彩票结构，不构成可外推的预测能力。",
+      "actual_DA": -150.0,
+      "actual_RTPD": -1102.276,
+      "actual_Return": 952.276,
+      "PnL": 952.276,
+      "why_correct_or_wrong": "DA 贴负地板 -150.0 而 RTPD 深跌至 -1102.3，Return 大正 +952.3，SELL_DA 得利。本质：负电价行情右侧，RTPD 比 DA 更深地贴地板。",
+      "lessons": [
+        "收益 99% 来自 |return|>500 的极端行，彩票式抓尾部，不可复现",
+        "盈利与亏损是同一肥尾分布的两侧：同一批 node/hour 既大赚又大亏",
+        "高 confidence 是'行情持续'的机械产物，不是事件识别力"
+      ],
+      "related_rules": [
+        "Profit 分析：彩票式尾部收益（不可外推）"
+      ]
+    },
+    {
+      "case_id": "CASE-0018",
+      "decision_date": "2026-06-18",
+      "node": "CONTROLX_1_N001",
+      "hour": 24,
+      "model_prediction": "SELL",
+      "expected_return": 384.0399671452381,
+      "confidence": 0.7666666666666666,
+      "available_information_at_decision_time": {
+        "spread_lag1": 840.1628000000001,
+        "spread_lag2": 713.3282,
+        "spread_lag7": -66.1878,
+        "spread_mean7": 322.54111428571434,
+        "spread_mean14": 155.33591428571432,
+        "spread_mean30": 93.22736333333334,
+        "spread_std7": 453.1430828695628,
+        "spread_std14": 360.231513595574,
+        "spread_std30": 286.7973040397149,
+        "spread_day_std_lag1": 334.2922267369047,
+        "spread_day_range_lag1": 1039.5044,
+        "spread_day_max_lag1": 895.8208,
+        "da_day_mean_lag1": -132.74195,
+        "rtpd_day_mean_lag1": -644.7306125,
+        "load_2da_forecast": 26463.44,
+        "load_peak_flag": 0.0,
+        "t2m_lag1": 19.7840576171875,
+        "ssrd_lag1": 0.0,
+        "wind100_lag1": 2.4983036518096924,
+        "peer_spread_lag1": -2.6743999999999986,
+        "dow": 4,
+        "month": 6,
+        "ret_z_hist": 5.502660090266627,
+        "ret_pct_hist": 0.9985491316772918,
+        "spread_lag1_pct_node": 0.9943587483472895,
+        "da_lag1": -82.0926,
+        "rtpd_lag1": -922.2554,
+        "da_lag2": -140.7872,
+        "rtpd_lag2": -854.1154,
+        "da_lag7": -42.739,
+        "rtpd_lag7": 23.4488,
+        "spread_day_mean_lag1": 511.9886625,
+        "load_actual_lag1": 27844.0,
+        "load_actual_day_mean_lag1": 29652.70833333333,
+        "peer_da_lag1": 34.1457,
+        "peer_rtpd_lag1": 36.8201,
+        "is_holiday": 1,
+        "solar_flag": 0,
+        "zone": "ZP26"
+      },
+      "event_evidence": [
+        {
+          "event_type": "RENEWABLE_GENERATION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[RENEWABLE_GENERATION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "LOAD_FORECAST_REVISION",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[LOAD_FORECAST_REVISION] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OUTAGE_AND_CONSTRAINT",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OUTAGE_AND_CONSTRAINT] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "CAISO_MARKET_NOTICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[CAISO_MARKET_NOTICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "WILDFIRE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[WILDFIRE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "EXTREME_WEATHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[EXTREME_WEATHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "FUEL_PRICE",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[FUEL_PRICE] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        },
+        {
+          "event_type": "OTHER",
+          "region": "ZP26",
+          "affected_nodes": [
+            "CONTROLX_1_N001"
+          ],
+          "start_time": "",
+          "end_time": "",
+          "severity": "INFO",
+          "source": "(not-connected)",
+          "published_at": "",
+          "summary": "[OTHER] 当前无真实数据源接入（fetcher 占位）。该证据方向未知，directional_effect=UNCERTAIN，不参与任何方向/风控决策。",
+          "directional_effect": "UNCERTAIN",
+          "confidence": 0.0
+        }
+      ],
+      "human_decision": "回测记录：按 SELL 执行并盈利 +942.2 $/MWh。但该盈利依赖极端尾部行情，属不可复现的彩票结构，不构成可外推的预测能力。",
+      "actual_DA": -148.8844,
+      "actual_RTPD": -1091.0634,
+      "actual_Return": 942.179,
+      "PnL": 942.179,
+      "why_correct_or_wrong": "DA 贴负地板 -148.9 而 RTPD 深跌至 -1091.1，Return 大正 +942.2，SELL_DA 得利。本质：负电价行情右侧，RTPD 比 DA 更深地贴地板。",
+      "lessons": [
+        "收益 99% 来自 |return|>500 的极端行，彩票式抓尾部，不可复现",
+        "盈利与亏损是同一肥尾分布的两侧：同一批 node/hour 既大赚又大亏",
+        "高 confidence 是'行情持续'的机械产物，不是事件识别力"
+      ],
+      "related_rules": [
+        "Profit 分析：彩票式尾部收益（不可外推）"
+      ]
+    }
+  ]
+}
