@@ -53,6 +53,7 @@ import math
 import os
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
@@ -1208,7 +1209,7 @@ class LLMCopilot:
             if self.client is None:
                 yield ("answer_start", {"label": "正在整理回答…"})
                 for chunk in _chunk_text(LLM_NOT_CONFIGURED_MSG):
-                    yield ("answer_delta", {"text": chunk})
+                    yield ("answer_delta", {"text": chunk}); time.sleep(0.015)
                 yield ("answer_done", {})
                 yield ("session_done", {"status": "degraded"})
                 return
@@ -1226,7 +1227,7 @@ class LLMCopilot:
             if not answer.strip():
                 answer = "Agent 暂时无法生成自然语言回答。"
                 for chunk in _chunk_text(answer):
-                    yield ("answer_delta", {"text": chunk})
+                    yield ("answer_delta", {"text": chunk}); time.sleep(0.015)
             yield ("answer_done", {})
         else:
             yield ("route_result", {"intent": "router", "tools_planned": []})
@@ -1240,7 +1241,7 @@ class LLMCopilot:
             answer = str(out.get("answer", ""))
             yield ("answer_start", {"label": "正在整理回答…"})
             for chunk in _chunk_text(answer):
-                yield ("answer_delta", {"text": chunk})
+                yield ("answer_delta", {"text": chunk}); time.sleep(0.015)
             yield ("answer_done", {})
         yield ("guard_start", {})
         tools_for_guard = tools_called if route is not None else out.get("tools_called", [])
