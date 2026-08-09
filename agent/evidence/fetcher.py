@@ -40,9 +40,12 @@ from agent.evidence.schema import (
 # 数据源注册表（未来接入真实源时在此登记，并实现 fetch_one 回调）
 # ---------------------------------------------------------------------------
 
-#: 每个数据源类型 -> 实现函数签名 fetch(source_cfg, ctx) -> List[Evidence]
-#: 当前全部为 None（占位），即"未接入"。任何未接入源 fetch 都返回 UNCERTAIN。
+#: 每个数据源类型 -> 实现函数名（模块路径，可 import）；None = 未接入（占位）。
+#: 接入真实源时在此登记，并确保 fetch_evidence 调用其回调。
 FETCHER_REGISTRY: Dict[str, Optional[str]] = {
+    "WEATHER_FORECAST": "agent.evidence.gfs_forecast:fetch_gfs_weather_evidence",
+    #   ↑ 已接入（2026-08-09）：NCEP GFS 历史预报档案（Open-Meteo Single Runs API）。
+    #     对 decision_date 返回 D+1 天气预报 Evidence（as-of，published_at=12Z run 时间）。
     "RENEWABLE_GENERATION": None,   # TODO: 接入 CA-ISO 可再生能源出力（最高优先）
     "LOAD_FORECAST_REVISION": None,  # TODO: 接入负荷预测实时修正
     "OUTAGE_AND_CONSTRAINT": None,   # TODO: 接入机组停运/输电阻塞
@@ -59,6 +62,18 @@ NO_SOURCE_NOTE = (
     "directional_effect=UNCERTAIN，不参与任何方向/风控决策。"
 )
 
+#: 已接入但本条为占位（调用方未请求真实数据）的说明
+CONNECTED_PLACEHOLDER_NOTE = (
+    "该数据源已接入真实 fetcher，但本条为占位记录（未请求实时/历史数据）。"
+    "方向未知，directional_effect=UNCERTAIN。"
+)
+
+
+def _placeholder_note(etype: str) -> str:
+    if FETCHER_REGISTRY.get(etype):
+        return CONNECTED_PLACEHOLDER_NOTE
+    return NO_SOURCE_NOTE
+
 
 def _default_sources() -> List[str]:
     """返回需要生成 UNCERTAIN 占位证据的数据源类型。"""
@@ -69,6 +84,17 @@ def _default_sources() -> List[str]:
 # 主接口
 # ---------------------------------------------------------------------------
 
+def _load_fetcher(ref: str):
+    """按 'module:function' 引用加载 fetcher 回调；失败返回 None。"""
+    try:
+        mod_name, func_name = ref.split(":", 1)
+        import importlib
+        mod = importlib.import_module(mod_name)
+        return getattr(mod, func_name)
+    except Exception:
+        return None
+
+
 def fetch_evidence(
     node: str,
     decision_date: str,
@@ -76,8 +102,9 @@ def fetch_evidence(
     hours: Optional[List[int]] = None,
     event_types: Optional[List[str]] = None,
     include_placeholders: bool = True,
+    include_real_sources: bool = True,
 ) -> List[Dict[str, Any]]:
-    """获取决策时点之前真实可见的外部证据（接口骨架）。
+    """获取决策时点之前真实可见的外部证据。
 
     Args:
         node:           目标节点，如 "CONTROLX_1_N001"
@@ -87,33 +114,44 @@ def fetch_evidence(
         event_types:    只取哪些事件类型；None 表示全部
         include_placeholders: True 时对每个未接入数据源生成一条 UNCERTAIN
                              占位证据（保证决策卡里能看到"有哪些源待接入"）
+        include_real_sources: True 时调用已接入源的真实 fetcher；False 只出占位
+                             （供 attach_uncertain_evidence 等离线/轻量场景）
 
     Returns:
-        标准 Evidence dict 列表。当前版本每条都是 directional_effect=UNCERTAIN。
+        标准 Evidence dict 列表。已接入源（WEATHER_FORECAST=GFS 历史预报）返回
+        真实数据（directional_effect=UNCERTAIN，as-of）；未接入源返回占位。
 
-    TODO(接入真实源后):
-        对每个已实现的数据源调用其 fetch 回调，做去重、时间窗口过滤
-        （只在 published_at <= decision_date 13:00 的事件才可见）、
-        影响节点过滤，然后合并返回。占位逻辑保留给仍未接入的源。
+    时间门槛：真实证据的 decision_eligible 由 Evidence 对象程序计算
+    （published_at <= decision_cutoff），调用方用 agent/evidence/time_gate.py
+    做统一裁决，本函数不替下游判断可用性。
     """
-    _ = hours  # 保留参数位，未来按小时切窗用
     results: List[Dict[str, Any]] = []
 
-    if not include_placeholders:
-        return results
-
     for etype in event_types or _default_sources():
-        placeholder = new_uncertain_evidence(
-            event_type=etype,
-            region=region or _region_of(node),
-            affected_nodes=[node],
-            severity="INFO",
-            source="(not-connected)",
-            published_at="",
-            summary=f"[{etype}] {NO_SOURCE_NOTE}",
-            confidence=0.0,
-        )
-        results.append(placeholder.to_dict())
+        ref = FETCHER_REGISTRY.get(etype)
+        if include_real_sources and ref:
+            fn = _load_fetcher(ref)
+            if fn is not None:
+                try:
+                    evs = fn(node, decision_date, hours=hours)
+                except Exception as exc:  # 抓取失败不阻塞其它源
+                    print(f"[fetcher] {etype} fetch error: {exc}")
+                    evs = []
+                results.extend(evs or [])
+                continue
+        # 未接入 / 不请求真实源 → 占位（仍 UNCERTAIN）
+        if include_placeholders:
+            placeholder = new_uncertain_evidence(
+                event_type=etype,
+                region=region or _region_of(node),
+                affected_nodes=[node],
+                severity="INFO",
+                source="(not-connected)" if not FETCHER_REGISTRY.get(etype) else "(connected-placeholder)",
+                published_at="",
+                summary=f"[{etype}] {_placeholder_note(etype)}",
+                confidence=0.0,
+            )
+            results.append(placeholder.to_dict())
     return results
 
 
@@ -150,8 +188,9 @@ def compile_evidence_context(
         "has_uncertain": directional_summary.get("UNCERTAIN", 0) > 0,
         "connected_sources": connected,
         "note": (
-            "当前版本无真实外部数据源，全部证据 directional_effect=UNCERTAIN。"
-            "LLM 仅做整理/摘要，未做任何价格方向判断。"
+            "已接入 WEATHER_FORECAST（NCEP GFS 历史预报，as-of）；该源 "
+            "directional_effect=UNCERTAIN（预报不直接决定 Return 方向）。"
+            "其余源未接入，全部为 UNCERTAIN 占位。LLM 仅做整理/摘要，未做方向判断。"
         ),
     }
 
@@ -163,11 +202,13 @@ def attach_uncertain_evidence(
 ) -> List[Dict[str, Any]]:
     """给 Case / Decision Card 挂一条"无真实证据"的标准占位记录。
 
-    这是当前版本唯一合法的证据挂载方式：全部 UNCERTAIN、confidence=0。
+    语义：只出 UNCERTAIN 占位（不调用真实 fetcher，离线/轻量安全）。
+    真实数据源证据请在决策时点通过 fetch_evidence(include_real_sources=True)
+    获取，再经 time_gate 过滤。
     """
     return fetch_evidence(
         node=node, decision_date=decision_date, region=region,
-        include_placeholders=True,
+        include_placeholders=True, include_real_sources=False,
     )
 
 

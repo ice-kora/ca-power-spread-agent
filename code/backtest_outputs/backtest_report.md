@@ -2,7 +2,7 @@
 
 > 生成时间：2026-08-09T08:32:38
 > 数据：canonical.parquet（无泄漏层，Agent C 消费同一数据）
-> 决策时点：decision_date 13:00 前（契约冻结）；PnL 按 1 MWh normalized。
+> 决策时点：decision_date 10:00 PT 前（DAM Market Close / bid cutoff）；PnL 按 1 MWh normalized。
 > 评估窗口：test 2026-06-02 ~ 2026-08-05（Agent C 正式预测）
 > 主策略节点：ZP26（SNLNDRO / CONTROLX）；ELCAJNGT cold-start 单独评估。
 

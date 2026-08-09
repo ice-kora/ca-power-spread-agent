@@ -63,6 +63,14 @@ class Case:
     lessons: List[str] = field(default_factory=list)
     related_rules: List[str] = field(default_factory=list)
 
+    # -- V0.2 时间字段（CaseGenerationPolicy，防 Case 穿越）----------------
+    # case_created_at      生成时刻（结算后可生成）
+    # case_available_at    最早可被未来决策检索的时刻（严格 as-of；缺失=不可检索）
+    # review_completed_at  人工/Agent 复核完成时刻（未复核为空字符串）
+    case_created_at: str = ""
+    case_available_at: str = ""
+    review_completed_at: str = ""
+
     # ------------------------------------------------------------------
     def to_dict(self) -> Dict[str, Any]:
         """序列化为可 json.dump 的 dict（None 保留，便于区分"缺失"与 0）。"""
@@ -98,6 +106,9 @@ class Case:
             why_correct_or_wrong=str(raw.get("why_correct_or_wrong", "")),
             lessons=list(raw.get("lessons", [])),
             related_rules=list(raw.get("related_rules", [])),
+            case_created_at=str(raw.get("case_created_at", "")),
+            case_available_at=str(raw.get("case_available_at", "")),
+            review_completed_at=str(raw.get("review_completed_at", "")),
         )
 
     # ------------------------------------------------------------------

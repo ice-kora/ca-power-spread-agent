@@ -6,19 +6,22 @@ Case Library 适配层：从 agent/case_library/cases.json 检索"相似历史�
 供 Risk Gate 的 R8（SIMILAR_TAIL_LOSS_CASE）使用。
 
 设计要点：
-  - **as-of 约束**：只有决策时点**之前已知结果**的 Case 才可用。
-    Case.decision_date = 该 Case 的目标日 target_date − 1（bid cutoff 当日）。
-    对候选（target_date=T，决策日 = T−1），可用 Case 需满足
+  - **as-of 约束（硬约束，严格防 Case 穿越）**：只有决策时点之前结果已完整
+    结算的 Case 才可用。
+      Case.case_available_at = 目标日完整结算后次日 06:00（见 policy.py）。
+      候选决策时点 decision_time = (target_date−1) 10:00 PT。
+      可用 ⇔  is_retrievable(case, decision_time)  ⇔  case_available_at <= decision_time
+    —— 由 agent/case_library/policy.py 的 is_retrievable 统一裁决（单一实现）。
+    旧 cases.json（V0.1，无 case_available_at）回退到 decision_date 比较：
         case.decision_date < T − 1  ⇔  case.target_date < T
-    （即该 Case 的目标日已完整过去，其结果已实际发生并可被决策日看到）。
+      （该口径较宽松，仅作兼容；新生成的 Case 一律走硬约束。）
   - **相似度**：同 node + 同 direction（Case.model_prediction ∈ {BUY, SELL}）+
     |hour − case.hour| <= hour_window。
   - **亏损 Case**：Case.PnL < tail_threshold（默认 −300 $/MWh）。
   - 返回按 |PnL| 降序（最惨在前）截断到 max 条。
 
-⚠️ 诚实边界：当前 cases.json 全部来自 test 窗口（2026-06-14~07-23），
-因此对 test 窗口早期候选几乎不触发；随着窗口推进（06-30 后）会逐步命中。
-这符合"历史相似案例只在它真实发生后才能被参考"的 as-of 语义。
+⚠️ 诚实边界：V0.1 cases.json 全部来自 test 窗口，对 test 窗口早期候选几乎不触发；
+自动生成版 cases_auto.json 覆盖整个 test 窗口，且带 case_available_at 硬约束。
 """
 
 from __future__ import annotations
@@ -28,6 +31,13 @@ import os
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+
+#: Case 硬约束（as-of）单一实现：agent/case_library/policy.py::is_retrievable
+try:
+    from agent.case_library.policy import is_retrievable as _case_as_of_retrievable
+    _HAS_POLICY = True
+except Exception:  # 依赖缺失时回退到旧口径（兼容旧环境）
+    _HAS_POLICY = False
 
 #: cases.json 默认路径（相对本文件：repo/agent/case_library/cases.json）
 _DEFAULT_CASES_PATH = os.path.join(
@@ -81,12 +91,14 @@ def match_similar_tail_cases(
     node = str(candidate.get("node", ""))
     hour = int(candidate.get("hour", -1) or -1)
     direction = str(candidate.get("direction", "")).upper()
-    # 候选决策日 = target_date − 1（可被看到的结果边界）
+    # 候选决策时点 = (target_date−1) 10:00 PT（硬约束比较基准）
     cand_decision = None
+    cand_decision_time = None
     if as_of:
         td = _as_ts(candidate.get("target_date"))
         if td is not None:
             cand_decision = td - pd.Timedelta(days=1)
+            cand_decision_time = (td - pd.Timedelta(days=1)).strftime("%Y-%m-%dT10:00:00")
 
     matched: List[Dict[str, Any]] = []
     for c in cases:
@@ -109,9 +121,14 @@ def match_similar_tail_cases(
         if pnl_f is None or pnl_f != pnl_f or pnl_f >= tail_threshold:
             continue  # 非亏损 Case 不计入
         if as_of:
-            cd = _as_ts(c.get("decision_date"))
-            if cd is None or cand_decision is None or cd >= cand_decision:
-                continue
+            # 硬约束：case_available_at <= decision_time（policy 统一裁决）
+            if _HAS_POLICY and c.get("case_available_at"):
+                if not _case_as_of_retrievable(c, cand_decision_time or ""):
+                    continue
+            else:  # 旧 cases.json（无 case_available_at）回退 decision_date 比较
+                cd = _as_ts(c.get("decision_date"))
+                if cd is None or cand_decision is None or cd >= cand_decision:
+                    continue
         matched.append(c)
 
     matched.sort(key=lambda c: float(c.get("PnL", 0.0)))

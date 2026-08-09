@@ -59,7 +59,7 @@
 
 | 列 | 定义 | available_at |
 |---|---|---|
-| actual_da | target_date 当日 DA 清价 | target_date-1 13:00（出清后）|
+| actual_da | target_date 当日 DA 清价 | target_date-1 13:00（DA 结果发布，非 bid cutoff）|
 | actual_rtpd | target_date 当日 RTPD | target_date 深夜（实时市场）|
 | actual_return | actual_da - actual_rtpd | 两者齐备后 |
 | direction | sign(actual_return) | 两者齐备后 |

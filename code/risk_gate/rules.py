@@ -365,6 +365,45 @@ def rule_evidence_conflict(candidate: Dict, cfg: RiskGateConfig) -> Optional[Rul
 
 
 # ---------------------------------------------------------------------------
+# R12 证据极端状态（EXTREME_STATE_EVIDENCE → REJECT/WARNING，evidence 驱动）
+# ---------------------------------------------------------------------------
+_SEVERITY_ORDER: tuple = ("INFO", "WATCH", "WARNING", "SEVERE", "CRITICAL")
+
+
+def rule_extreme_state_evidence(candidate: Dict, cfg: RiskGateConfig) -> Optional[RuleHit]:
+    """R12 证据极端状态：Pre-decision Evidence 的极端状态 severity 达到阈值 → REJECT/WARNING。
+
+    消费 evidence_direction_context（由 evidence_adapter 汇总 eligible Evidence 产出）：
+    - 只读 max_severity，不判方向（directional_effect=UNCERTAIN，证据仅当风险因子）；
+    - severity ≥ cfg.evidence_extreme_severity_threshold → 命中；
+    - 级别由 cfg.evidence_extreme_level 决定（默认 REJECT=保守；WARNING 则只标记）；
+    - 无证据（max_severity=INFO / ctx 为空）→ 不触发（既有行为完全不变）。
+    """
+    if not cfg.evidence_extreme_enabled:
+        return None
+    ctx = candidate.get("evidence_direction_context") or {}
+    sev = str(ctx.get("max_severity", "INFO")).upper()
+    thr = str(cfg.evidence_extreme_severity_threshold or "WARNING").upper()
+    if sev not in _SEVERITY_ORDER or thr not in _SEVERITY_ORDER:
+        return None
+    if _SEVERITY_ORDER.index(sev) < _SEVERITY_ORDER.index(thr):
+        return None
+    level = (LEVEL_REJECT if cfg.evidence_extreme_level == "REJECT" else LEVEL_WARNING)
+    n_ev = int(ctx.get("n", 0))
+    return RuleHit(
+        rule_id="R12",
+        reason_code="EXTREME_STATE_EVIDENCE",
+        level=level,
+        message=(
+            f"Pre-decision Evidence 极端状态（{n_ev} 条，severity={sev} ≥ {thr}）→ "
+            f"{cfg.evidence_extreme_level}；directional_effect=UNCERTAIN，仅风险因子，不判方向"
+        ),
+        threshold=f"evidence_direction_context.max_severity ≥ {thr}",
+        rule_version="0.2 (evidence-driven)",
+    )
+
+
+# ---------------------------------------------------------------------------
 # 规则注册表（按判定优先级排序：REJECT 规则在前）
 # ---------------------------------------------------------------------------
 #: 有序规则列表。gate.py 依次执行；任何 REJECT 命中即整体 REJECT。
@@ -373,6 +412,7 @@ RULES: List[Dict] = [
     {"rule_id": "R7a", "reason_code": "BUY_ON_POSITIVE_DRIFT_NODE","fn": rule_buy_on_positive_drift},
     {"rule_id": "R7b", "reason_code": "SELL_ON_NEGATIVE_DRIFT_NODE","fn": rule_sell_on_negative_drift},
     {"rule_id": "R6",  "reason_code": "LOW_SAMPLE_SUPPORT",        "fn": rule_low_sample},
+    {"rule_id": "R12", "reason_code": "EXTREME_STATE_EVIDENCE",    "fn": rule_extreme_state_evidence},
     {"rule_id": "R5",  "reason_code": "EXTREME_TAIL_NODE",         "fn": rule_extreme_tail},
     {"rule_id": "R3",  "reason_code": "HIGH_VOLATILITY",           "fn": rule_high_volatility},
     {"rule_id": "R9",  "reason_code": "MODEL_UNSTABLE",            "fn": rule_model_unstable},
@@ -397,6 +437,6 @@ def describe_rules() -> List[Dict]:
 
 
 def _rule_default_level(rule_id: str) -> str:
-    if rule_id in ("R01", "R7a", "R7b", "R6"):
+    if rule_id in ("R01", "R7a", "R7b", "R6", "R12"):
         return LEVEL_REJECT
     return LEVEL_WARNING

@@ -85,10 +85,12 @@ def signed_pnl(direction: str, actual_return: Optional[float]) -> Optional[float
 # ---------------------------------------------------------------------------
 # Risk Gate reason_code 全集
 # ---------------------------------------------------------------------------
-# 任务要求的 10 个必备码 + 本项目历史用码（MODEL_DISAGREEMENT / 证据冲突）。
+# 任务要求的 10 个必备码 + 本项目补充码（证据冲突 / 无方向）。
 # 注意：不是所有码都会 REJECT——LOW_CONFIDENCE / HIGH_VOLATILITY / MODEL_UNSTABLE
 # 在 train+val 验证中**不具判别力**（V0.1 已删/降级，见 docs/stage3/risk_gate_design.md），
 # 因此本版保留为 WARNING 级（供审计/交易员参考），默认不拦截交易。
+# 已移除：MODEL_DISAGREEMENT（V0.1 R2 三模型一致性投票残留；V0.2 单一生产模型，
+# Interpretable/CatBoost 仅作 benchmark/offline validation，见 docs/DecisionPipeline.md §4）。
 REASON_CODES: tuple = (
     # ---- 必备码（10 个）----
     "LOW_CONFIDENCE",               # 置信度过低（V0.1 验证未校准，仅警告）
@@ -101,8 +103,7 @@ REASON_CODES: tuple = (
     "BUY_ON_POSITIVE_DRIFT_NODE",   # R7a：正漂移节点上 BUY（逆漂移）→ REJECT
     "SELL_ON_NEGATIVE_DRIFT_NODE",  # R7b：负漂移节点上 SELL（逆漂移）→ REJECT
     "LOW_SAMPLE_SUPPORT",           # R6：样本量不足（cold-start）→ REJECT
-    # ---- 历史补充码 ----
-    "MODEL_DISAGREEMENT",           # R2：多模型同向 = 同一错误二次确认（并集 reason）
+    # ---- 补充码 ----
     "EVIDENCE_CONFLICT",            # 可用的 Pre-decision Evidence 方向与候选方向冲突
     "NO_CLEAR_DIRECTION",           # expected_return 无明确方向（=0 / 缺失）
 )

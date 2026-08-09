@@ -30,8 +30,9 @@ features.parquet 保留作对比）。修复 2026-08-07 审计确认的全部数
 
 历史特征以"交付日"对齐（delivery day = target_date - k）：
     lag1        -> target_date - 2  （决策时已知的最后一个"整日完整"交付日：DA(target_date-1)
-                    虽已于 target_date-2 13:00 出清，但 RTPD(target_date-1) 要到决策日深夜才
-                    完整，故对称起见滞后从 target_date-2 起，宁保守不泄漏）
+                    虽已于 target_date-2 13:00 出清（DA 结果发布，非 bid cutoff），但
+                    RTPD(target_date-1) 要到决策日深夜才完整，故对称起见滞后从
+                    target_date-2 起，宁保守不泄漏）
     lag2        -> target_date - 3
     lag7        -> target_date - 8
     rolling(w)  -> 同 hour 上 target_date-2 .. target_date-(w+1) 共 w 天
@@ -597,7 +598,7 @@ def write_availability_matrix(schema):
         "",
         "| 列 | 定义 | available_at |",
         "|---|---|---|",
-        "| actual_da | target_date 当日 DA 清价 | target_date-1 13:00（出清后）|",
+        "| actual_da | target_date 当日 DA 清价 | target_date-1 13:00（DA 结果发布，非 bid cutoff）|",
         "| actual_rtpd | target_date 当日 RTPD | target_date 深夜（实时市场）|",
         "| actual_return | actual_da - actual_rtpd | 两者齐备后 |",
         "| direction | sign(actual_return) | 两者齐备后 |",

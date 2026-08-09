@@ -71,6 +71,7 @@ EVIDENCE_KEYS: tuple = (
 
 #: 未来待接入的真实数据源类型（当前版本无真实数据源，全部留 TODO）
 KNOWN_EVENT_TYPES: tuple = (
+    "WEATHER_FORECAST",         # 真实历史 D+1 天气预报（GFS 等，as-of，含温度/风/辐照）
     "EXTREME_WEATHER",          # 极端天气（高温热浪/暴风雨/热浪预警等）
     "CAISO_MARKET_NOTICE",      # CAISO 市场通知 / 系统公告
     "OUTAGE_AND_CONSTRAINT",    # 机组停运 / 输电阻塞

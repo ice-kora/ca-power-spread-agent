@@ -37,6 +37,7 @@ if str(REPO_ROOT) not in sys.path:
 import pandas as pd  # noqa: E402
 
 from agent.case_library.case import Case  # noqa: E402
+from agent.case_library.policy import settlement_available_at  # noqa: E402
 from agent.evidence.fetcher import attach_uncertain_evidence  # noqa: E402
 
 DATA_DIR = REPO_ROOT / "code" / "data"
@@ -185,7 +186,7 @@ def _gate_note(row: pd.Series) -> str:
     if "ELCA" in node and hist_n is not None and hist_n < 200:
         notes.append("会被 R6 REJECT（LOW_SAMPLE_SUPPORT）")
     if agreement == "conflict":
-        notes.append("会被 R2 标记 MODEL_DISAGREEMENT")
+        notes.append("会被 V0.1 R2 标记 MODEL_DISAGREEMENT（V0.2 已删除该三模型一致性投票残留，见 docs/DecisionPipeline.md §4）")
     if "CONTROLX" in node and action == "SELL":
         notes.append("R4 已验证无法事前识别 CONTROLX SELL 的 DA 崩塌尾（gate 不覆盖）")
     if not notes:
@@ -292,7 +293,7 @@ def _related_rules(row: pd.Series, source: str) -> List[str]:
     elif _s(row, "type") == "C":
         rules.append("Type C (RESIDUAL_TAIL_RISK)")
     if _s(row, "agreement") == "conflict":
-        rules.append("R2: MODEL_DISAGREEMENT")
+        rules.append("R2(V0.1 已删除): MODEL_DISAGREEMENT（三模型一致性投票残留，历史参考）")
     if "CONTROLX" in node and action == "BUY":
         rules.append("R7a: CONTROLX BUY → REJECT")
     if "ELCA" in node:
@@ -350,6 +351,7 @@ def build_cases() -> List[Case]:
             continue
         seen.add(dedupe_key)
         pnl = _f(row, "worst_pnl")
+        _avail = settlement_available_at(td)  # case_available_at（目标日结算后）
         cases.append(Case(
             case_id=f"CASE-{seq:04d}",
             decision_date=dd_lookup.get(key, str((date.fromisoformat(td) - timedelta(days=1)))),
@@ -368,6 +370,9 @@ def build_cases() -> List[Case]:
             why_correct_or_wrong=_loss_why(row),
             lessons=_loss_lessons(row),
             related_rules=_related_rules(row, source="loss"),
+            case_created_at=_avail,
+            case_available_at=_avail,
+            review_completed_at="",
         ))
         seq += 1
 
@@ -387,6 +392,7 @@ def build_cases() -> List[Case]:
             continue
         seen.add(dedupe_key)
         pnl = _f(row, "pnl")
+        _avail = settlement_available_at(td)
         cases.append(Case(
             case_id=f"CASE-{seq:04d}",
             decision_date=dd_lookup.get(key, str((date.fromisoformat(td) - timedelta(days=1)))),
@@ -405,6 +411,9 @@ def build_cases() -> List[Case]:
             why_correct_or_wrong=_profit_why(row),
             lessons=_profit_lessons(row),
             related_rules=_related_rules(row, source="profit"),
+            case_created_at=_avail,
+            case_available_at=_avail,
+            review_completed_at="",
         ))
         seq += 1
 

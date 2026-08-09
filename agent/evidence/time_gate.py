@@ -30,6 +30,29 @@ from typing import List, Optional, Sequence, Tuple
 from agent.evidence.schema import Evidence, evidence_from_dict, parse_timestamp
 
 
+def is_available_before_cutoff(available_at: Optional[str],
+                               decision_cutoff: Optional[str]) -> bool:
+    """特征可用性门槛：`available_at <= decision_cutoff` 才允许进入生产特征/证据。
+
+    business_contract §4 铁律：任何特征若 `available_at > decision_cutoff`
+    （D-1 日 10:00 PT，DAM Market Close / bid cutoff）→ **禁止进入训练/推理**。
+    Evidence 的 `published_at` 即该条证据的 `available_at`，本函数与
+    `Evidence.decision_eligible` 同语义（纯程序计算，禁止 LLM 判断）。
+
+    Returns:
+        True  仅当 available_at 非空、可解析且 <= decision_cutoff
+        False 任一时间缺失 / 不可解析 / 晚于 cutoff（宁保守不穿越）
+    """
+    pub = parse_timestamp(available_at)
+    cutoff = parse_timestamp(decision_cutoff)
+    if pub is None or cutoff is None:
+        return False
+    try:
+        return pub <= cutoff
+    except Exception:
+        return False
+
+
 def is_decision_eligible(ev: Evidence, decision_cutoff: Optional[str] = None) -> bool:
     """程序判断单条证据是否可在该决策时点使用。
 

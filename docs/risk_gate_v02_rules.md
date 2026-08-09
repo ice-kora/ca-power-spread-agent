@@ -210,5 +210,5 @@ print(decision.decision, decision.reasons, decision.rules_hit)
    V0.1 已证明无法用事前内部信号可靠识别（cvar99/lag1_pct 均失败），强行拦截会误伤顺漂移右尾。
 3. **case_library 全部来自 test 窗口**：as-of 检索对 test 早期候选几乎不触发，窗口推进后才逐步命中；
    `SIMILAR_TAIL_LOSS_CASE` 当前是提示级，不拦截。
-4. **置信度/不确定度未校准**：V0.1 + 本版均确认与 PnL 非单调，故全部降为 WARNING。
+4. **置信度/不确定度未校准（confidence 现名 `model_signal_strength`，即模型信号强度，非概率；见 docs/confidence_calibration.md）**：V0.1 + 本版均确认与 PnL 非单调，故全部降为 WARNING。
 5. **未做仓位优化与成本**：契约约定 1 MWh/仓；test 窗口仅 65 天，外推受限。

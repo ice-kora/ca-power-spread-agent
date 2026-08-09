@@ -4,11 +4,19 @@ agent/explanation/cards.py
 
 基于 test 预测生成历史 Decision Card（V0.2 白盒交易决策 Agent · 模块 3/3）。
 
-数据说明：
-  - 首选 predictions_v2.csv（Agent B 的整合预测）；当前【不存在】，
-    故用 predictions_rule.csv（白盒 Rule 模型）作为主要来源，并在 meta 中注明。
-  - 为演示 Risk Gate 对 CONTROLX BUY 的 REJECT（R7a），额外从
-    predictions_interpretable.csv 选 3 个真实极端日卡片（model_source 已标注）。
+Production Explanation 边界（V0.2，单一 Production Predictive Model）：
+  本模块只解释：
+    Predictive Model Output + Feature Contribution + Agent Evidence +
+    Similar Historical Cases + Risk Gate + White-box Rule Engine。
+  Rule Baseline = benchmark / 回测基线；Interpretable = 开发与验证工具
+  （特征方向 sanity check）。二者均【不参与线上 BUY/SELL 投票】。
+
+数据说明（本文件是历史演示卡，非线上推理）：
+  - 线上生产模型是 predictions_v2.csv（Agent B / model_v2.py 整合预测）；
+    本演示卡按 CARD_SELECT 显式选行，rule 来源卡片演示"模型输出 → 依据 →
+    Evidence → Risk Gate → 建议"的完整链路（Rule = benchmark 兜底），
+    interpretable 来源卡片仅用于演示 Risk Gate 对 CONTROLX BUY（R7a）与
+    ELCA 低样本（R6）的 REJECT（offline validation，非线上投票）。
   - 特征：canonical.parquet（as-of）+ risk_features.parquet（hist_n/lag1_pct 等，
     全部 ≤ target_date-2，见 code/tmp/agent_d_features.py）。
 
@@ -18,7 +26,7 @@ agent/explanation/cards.py
 
 口径：
   - 卡片只用决策时点可见信息 + 模型输出；不写目标日实际价作为依据。
-  - Risk Gate 引用已校准规则（R7a/R6/R2/R4 降级为警告），不发明新规则。
+  - Risk Gate 引用已校准规则（R7a/R6/R4 降级为警告），不发明新规则。
   - 不判方向：建议动作来自模型输出，本模块只组织/解释。
 
 运行：python agent/explanation/cards.py
@@ -29,7 +37,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -121,22 +129,6 @@ def _load_merged() -> pd.DataFrame:
     return m
 
 
-def _agreement(rule_dir: Any, interp_dir: Any, cat_dir: Any) -> str:
-    """三模型方向一致性（0 视为观望不交易）。"""
-    dirs = [d for d in (rule_dir, interp_dir, cat_dir)
-            if d is not None and not (isinstance(d, float) and d != d) and int(d) != 0]
-    if not dirs:
-        return "ALL_NO_TRADE"
-    signs = {1 if int(d) > 0 else -1 for d in dirs}
-    if len(signs) == 2:
-        return "conflict"
-    if len(dirs) == 3:
-        return "3/3 一致"
-    if len(dirs) == 2:
-        return "2/3 一致"
-    return "仅单模型交易"
-
-
 # ---------------------------------------------------------------------------
 # 量化依据 & 风险门 & 风险清单
 # ---------------------------------------------------------------------------
@@ -164,9 +156,6 @@ def _basis_bullets(row: pd.Series, hour: int, model_source: str) -> List[str]:
     if lag1_pct is not None and not (isinstance(lag1_pct, float) and lag1_pct != lag1_pct):
         bullets.append(f"决策时spread_lag1处于历史{lag1_pct * 100:.0f}%分位")
 
-    agreement = _agreement(row.get("rule_dir"), row.get("interp_dir"), row.get("cat_dir"))
-    bullets.append(f"三模型一致性:{agreement}")
-
     conf = row.get("model_conf")
     if conf is not None and not (isinstance(conf, float) and conf != conf) and conf >= 0.9:
         node = row.get("node", "")
@@ -183,12 +172,15 @@ def _basis_bullets(row: pd.Series, hour: int, model_source: str) -> List[str]:
 
 
 def _risk_gate(row: pd.Series, suggested_action: str) -> RiskGateResult:
-    """透明引用已校准 Risk Gate 规则（R7a/R6/R2/R4 警告级）。"""
+    """透明引用已校准 Risk Gate 规则（R7a/R6/R4 警告级）。
+
+    V0.2 正式 Risk Gate（code/risk_gate/rules.py）只消费单一生产模型输出 +
+    as-of 风险特征 + eligible Evidence，不含三模型一致性投票。
+    """
     node = str(row.get("node", ""))
     hist_n = row.get("hist_n")
     if isinstance(hist_n, float) and hist_n != hist_n:
         hist_n = None
-    agreement = _agreement(row.get("rule_dir"), row.get("interp_dir"), row.get("cat_dir"))
 
     # R7a —— 结构事实：CONTROLX 正漂移 + BUY 无条件负期望 → REJECT
     if "CONTROLX" in node and suggested_action == "BUY_DA":
@@ -203,13 +195,6 @@ def _risk_gate(row: pd.Series, suggested_action: str) -> RiskGateResult:
             status="REJECT",
             reasons=["LOW_SAMPLE_SUPPORT"],
             note=f"同节点HE{row.get('hour')}历史样本仅 {int(hist_n)}（<200，cold-start），统计不可靠。",
-        )
-    # R2 —— 模型冲突 → 警告（R7 的并集 reason，不独立拦截）
-    if agreement == "conflict":
-        return RiskGateResult(
-            status="PASS_WITH_WARNING",
-            reasons=["MODEL_DISAGREEMENT"],
-            note="rule 与 ML 模型方向冲突，决策时点可见的方向不确定性硬信号。",
         )
     # R4 —— 已知重尾节点 → 警告（已由 REJECT 降级为 PASS_WITH_WARNING）
     if "CONTROLX" in node:
@@ -294,7 +279,7 @@ def build_cards() -> List[DecisionCard]:
             act_dir, er, conf = row["interp_dir"], row["interp_er"], row["interp_conf"]
         elif source == "catboost":
             act_dir, er, conf = row["cat_dir"], row["cat_er"], row["cat_conf"]
-        else:  # committee
+        else:  # 兜底：Rule Baseline（benchmark），生产模型 predictions_v2 未接入本演示卡
             act_dir, er, conf = row["rule_dir"], row["rule_er"], row["rule_conf"]
 
         act_dir = int(act_dir) if act_dir == act_dir else 0
@@ -332,16 +317,18 @@ def main() -> None:
 
     meta = {
         "module": "agent/explanation",
-        "version": "0.1",
+        "version": "0.2",
         "description": (
-            "Decision Card 历史预览（test 窗口 2026-06-02~08-05）。"
-            "首选 predictions_v2.csv 未生成，故以 predictions_rule.csv 为主源；"
-            "另附 4 张 interpretable 卡片演示 Risk Gate 对 CONTROLX BUY / ELCA 低样本的 REJECT。"
+            "Decision Card 历史预览（test 窗口 2026-06-02~08-05），V0.2 单一生产模型口径。"
+            "生产模型 predictions_v2.csv 已生成，本演示卡按 CARD_SELECT 显式选行："
+            "rule 来源卡片（Rule = benchmark 兜底）演示完整链路；"
+            "另附 interpretable 卡片（Interpretable = 开发/验证工具，非线上投票）"
+            "演示 Risk Gate 对 CONTROLX BUY / ELCA 低样本的 REJECT。"
         ),
-        "prediction_source": "predictions_rule.csv (fallback, predictions_v2.csv 不存在)",
+        "prediction_source": "predictions_rule.csv / predictions_interpretable.csv（curated demo；线上生产模型 = predictions_v2.csv）",
         "evidence_note": "Agent Evidence 全部 UNCERTAIN（当前无真实外部数据源，LLM 未判方向）",
         "risk_gate_note": (
-            "引用已校准规则 R7a/R6/R2（R4 降级为警告），透明、非新发明；"
+            "引用已校准规则 R7a/R6/R4（警告级），透明、非新发明；"
             "完整说明见 docs/stage3/risk_gate_design.md"
         ),
         "card_count": len(cards),

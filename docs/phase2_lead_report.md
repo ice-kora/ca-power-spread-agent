@@ -16,7 +16,7 @@
 ## 2. 验收清单（对应契约 §10）
 
 ### ① 修复后的业务时间线
-决策时点 = **D-1 日 DA bid cutoff（约 13:00，日前出清前）**。此时：可用 ≤D-2 历史价格/负荷/天气滞后、D+1 负荷预测(2DA, ASSUMED)、日历/节点；**不可见**：D+1 的 DA/RTPD/Return/实际负荷/实际天气（仅作 label）。详见 `docs/business_contract.md` 与 `数据审计与业务口径.md`。
+决策时点 = **D-1 日 DAM Market Close / bid cutoff（10:00 PT，官方 BPM；13:00 是 DA 结果发布 = label 可见时点）**。此时：可用 ≤D-2 历史价格/负荷/天气滞后、D+1 负荷预测(2DA, ASSUMED)、日历/节点；**不可见**：D+1 的 DA/RTPD/Return/实际负荷/实际天气（仅作 label）。详见 `docs/business_contract.md` 与 `docs/market_timeline.md`。
 
 ### ② feature_availability_matrix.md ✅（`docs/`，37 特征，A/B/C 三组）
 - A 确定可用：31 个（价格滞后、滚动、日内形态、负荷滞后、节点联动、2DA、日历）
@@ -78,7 +78,7 @@ Risk: 近7日 spread 波动较高
 - `load_2da_forecast` / `load_peak_flag` 发布时刻（ASSUMED，未官方实证）
 - 天气时区/小时对齐（America/Los_Angeles naive）
 - 2DA 文件发布语义、RTPD 聚合口径（15min vs 5min）、结算口径
-- 决策 cutoff 具体时刻（13:00 按官方页面，未标时区，以市场规则为准）
+- 决策 cutoff 具体时刻（**已由 market_timeline.md 核验并修正为 D-1 10:00 PT**；本行系 V0.1 遗留待确认项，原 13:00 实为 DA 结果发布时点）
 
 ### ⑮ 下一阶段 Agent 化建议
 见下 §4。

@@ -312,14 +312,6 @@ class WhiteBoxRiskGate:
                 dec.iloc[i] = "NO_TRADE"
                 r.append("LOW_SAMPLE_SUPPORT")
 
-            # R2：CONTROLX ML 双 BUY 与 rule 冲突 → 并入 R7a reason（不独立新增拦截）
-            if node == GATE_CFG["r7a_buy_reject_node"] and d_i == "BUY_DA":
-                interp = d.get("pred_direction_interpretable", pd.Series(np.nan, index=d.index)).iloc[i]
-                cat = d.get("pred_direction_catboost", pd.Series(np.nan, index=d.index)).iloc[i]
-                if pd.notna(interp) and pd.notna(cat) and interp < 0 and cat < 0:
-                    if "MODEL_DISAGREEMENT" not in r:
-                        r.append("MODEL_DISAGREEMENT")
-
             # R4：尾部警告（PASS_WITH_WARNING，不 REJECT）
             if dec.iloc[i] != "NO_TRADE":
                 if d_i == "SELL_DA":

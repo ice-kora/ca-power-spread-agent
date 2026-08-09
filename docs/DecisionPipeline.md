@@ -58,9 +58,9 @@
 
 **输出**：`PASS / REJECT / PASS_WITH_WARNING` + `reason_code`。
 
-reason_code 全集（本版实际使用加粗）：`BUY_ON_POSITIVE_DRIFT_NODE`、`SELL_ON_NEGATIVE_DRIFT_NODE`、`MODEL_DISAGREEMENT`、`LOW_SAMPLE_SUPPORT`、`EXTREME_TAIL_NODE`（警告级）。已删除：`LOW_CONFIDENCE`、`HIGH_VOLATILITY`、`EXPECTED_EDGE_TOO_SMALL`。
+reason_code 全集（本版实际使用加粗）：`BUY_ON_POSITIVE_DRIFT_NODE`、`SELL_ON_NEGATIVE_DRIFT_NODE`、`LOW_SAMPLE_SUPPORT`、`EXTREME_TAIL_NODE`（警告级）。已删除：`LOW_CONFIDENCE`、`HIGH_VOLATILITY`、`EXPECTED_EDGE_TOO_SMALL`、`MODEL_DISAGREEMENT`（三模型一致性投票残留，V0.2 单一生产模型 + Interpretable 仅作 offline validation，见下表 R2）。
 
-## 4. 规则清单（3 条有效 + 1 条降级 + 3 条删除）
+## 4. 规则清单（3 条有效 + 1 条降级 + 4 条删除）
 
 ### 有效规则
 
@@ -69,13 +69,13 @@ reason_code 全集（本版实际使用加粗）：`BUY_ON_POSITIVE_DRIFT_NODE`�
 | **R7a** | CONTROLX 且 BUY → REJECT | `BUY_ON_POSITIVE_DRIFT_NODE` | CONTROLX 无条件漂移 **+9.68**、BUY mean −9.68、maxloss −3,656、cvar99 −916；赔率倒挂（命中 +100 / 做错 −450） |
 | **R7b** | ELCA 且 SELL → REJECT | `SELL_ON_NEGATIVE_DRIFT_NODE` | ELCA 漂移 **−1.15**、SELL mean −1.15、maxloss −357 |
 | **R6** | hist_n < 150 → REJECT | `LOW_SAMPLE_SUPPORT` | ELCA train hist_n 中位 44、test 中位 121（<150）；主节点 ≥878 |
-| **R2** | CONTROLX BUY 且 interpretable_dir<0 且 catboost_dir<0 → 并集 reason | `MODEL_DISAGREEMENT` | 双 ML 同向 BUY = 同一错误二次确认（2,273 笔 cum −138,648）；不独立新增拦截，仅提供原因码（单模型视角下 rule_dir 置 NaN） |
 
 ### 降级 / 删除规则（验证无效，证据见 design §3.2–3.5）
 
 | rule_id | 决策 | 原因 |
 |---|---|---|
 | **R4** Tail Gate | **降级为 PASS_WITH_WARNING**（`EXTREME_TAIL_NODE`） | 历史 cvar99 阈值扫不到最大 SELL 亏损（−2,066 行事前 cvar99 仅 −276）；lag1_pct>0.95 信号 **regime 翻转**（train+val 负 EV −6,487 / test 正 EV +45,509），REJECT 会误砍 test 顺漂移利润 |
+| **R2** Model Disagreement | **删除**（`MODEL_DISAGREEMENT`） | 原"CONTROLX BUY 且 interpretable_dir<0 且 catboost_dir<0 → 并集 reason"是**三模型一致性投票残留**。V0.2 线上只有一个 Predictive Model；Interpretable / CatBoost 降级为 benchmark / offline validation，**不参与线上投票**，故该规则从正式 Risk Gate 移除（`code/risk_gate/rules.py` 无此规则） |
 | **R1** Confidence Gate | **删除** | confidence 与 PnL **反相关**（conf 桶 mean +2.06 → −19.29）；C 报告 CONFIDENCE NOT CALIBRATED（>0.80 桶 accuracy 反最低 60.3%） |
 | **R3** Volatility Gate | **删除** | vol_ratio 分层无单调性（>3.0 段反而 mean +10.49）；高波动是 CONTROLX 常态，非"这笔危险"信号 |
 | **R5** Expected Edge | **删除** | \|expected_return\| 阈值不改善 cvar99（稳定 ≈ −880~−930），只打薄 coverage（≥150 时仅 1.9%）；幅度预测秩相关≈0 |
@@ -101,7 +101,7 @@ reason_code 全集（本版实际使用加粗）：`BUY_ON_POSITIVE_DRIFT_NODE`�
 
 ## 7. 已知局限（如实标注）
 
-1. **confidence 未校准**：高置信 = 行情持续的机械产物 + 与尾部同源，既非概率也非风险度量；需 **quantile/EVT 尾部校准**替换（stage3 已列为下一阶段优先级）。
+1. **confidence 未校准（现名 `model_signal_strength` = 模型信号强度，见 docs/confidence_calibration.md）**：高置信 = 行情持续的机械产物 + 与尾部同源，既非概率也非风险度量；需 **quantile/EVT 尾部校准**替换（stage3 已列为下一阶段优先级）。
 2. **ELCA 被 gate 弃用**：R7b + R6 把 ELCA 全部 REJECT（test 1,554/1,560 行），裁决是"不交易"而非"交易得更聪明"；cold-start 样本积累后需复核。
 3. **gate 边界**：14 笔 Rule 的 CONTROLX SELL（DA 崩塌，2026-06-23/06-30）无法用任何事前内部信号可靠识别，本版不拦截。
 4. **方向门依赖漂移符号稳定**：CONTROLX 漂移 train+val +9.7 / test +84 均为正，方向门成立；若 regime 翻转需复核 R7a（白盒可审计）。

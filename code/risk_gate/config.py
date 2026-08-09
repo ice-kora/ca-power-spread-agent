@@ -158,6 +158,18 @@ class RiskGateConfig:
     evidence_conflict_warn: bool = True
     #   当前无真实数据源，全部证据 UNCERTAIN，本规则几乎不触发。
 
+    # ---- R12 证据极端状态（EXTREME_STATE_EVIDENCE → REJECT/WARNING，evidence 驱动）----
+    #   消费 Pre-decision Evidence 的方向上下文（evidence_direction_context.max_severity）：
+    #   当"极端状态"证据（如极端天气预警）severity 达到阈值 → 保守拦截（REJECT 或 WARNING）。
+    #   directional_effect 保持 UNCERTAIN（证据不判 Return 方向），只把极端状态当风险因子。
+    #   无证据时本规则不触发（A 组 / 既有 pipeline 行为完全不变）。
+    evidence_extreme_enabled: bool = True
+    evidence_extreme_severity_threshold: str = "WARNING"  # max_severity ≥ 该值 → 命中（WATCH<WARNING<SEVERE<CRITICAL）
+    evidence_extreme_level: str = "REJECT"                # "REJECT" 或 "WARNING"（默认 REJECT = 保守）
+    #   source: 任务定义（A/B 测试）——证据极端状态作为风险因子，证据与模型冲突时优先
+    #           WARNING/NO_TRADE，不反向下注。severity 由 evidence 构建方（A/B 脚本）赋值；
+    #           本规则只读不猜。
+
     # ---- 记录/审计 ----
     changelog: Tuple[str, ...] = (
         "0.2: 独立模块化；保留 V0.1 guardrail（标注 DATA-DERIVED TEMPORARY GUARDRAIL）；"

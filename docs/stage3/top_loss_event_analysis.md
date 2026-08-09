@@ -3,7 +3,7 @@
 > 分析日期：2026-08-09
 > 输入：`predictions_rule.csv` / `predictions_interpretable.csv` / `predictions_catboost.csv`（test 窗口 2026-06-02 ~ 2026-08-05，共 4,678 行/模型）+ `canonical.parquet` + `master.csv`
 > 口径：PnL = SELL_DA 取 `+actual_return`，BUY_DA 取 `−actual_return`，NO_TRADE = 0；交易子集 = `pred_direction != 0` 的 test 行。
-> 严格 as-of：所有"补算"历史统计只用 `target_date-2` 及更早的数据（决策截止为 decision_date 13:00，滞后约定见 canonical.py）；不使用任何未来值。
+> 严格 as-of：所有"补算"历史统计只用 `target_date-2` 及更早的数据（决策截止为 decision_date 10:00 PT，滞后约定见 canonical.py）；不使用任何未来值。
 
 ## 0. 结论先行
 

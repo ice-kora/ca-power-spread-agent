@@ -15,7 +15,7 @@
 
 ## 二、Leakage Guard（自动化防护）
 
-`canonical.py` 内置防护：**任何 X 特征 `available_at > decision_cutoff`（D-1 日 13:00）→ 阻止进入训练/推理**。已对 38 个 X 特征逐一断言，全部 ≤ decision_cutoff。
+`canonical.py` 内置防护：**任何 X 特征 `available_at > decision_cutoff`（D-1 日 10:00 PT，DAM Market Close / bid cutoff）→ 阻止进入训练/推理**。已对 38 个 X 特征逐一断言，全部 ≤ decision_cutoff。
 
 ## 三、删除 / 禁用的特征及原因
 

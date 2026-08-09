@@ -6,7 +6,7 @@
 ## 1. 行语义与决策时点
 
 - **一行 = (node, target_date, hour)**：节点 × 交付日 × 小时，共 49,210 行（2024-01-01 .. 2026-08-05）。
-- **决策日** decision_date = target_date − 1；**决策截止** decision_cutoff = decision_date 13:00（DA bid cutoff，业务契约冻结）。
+- **决策日** decision_date = target_date − 1；**决策截止** decision_cutoff = decision_date 10:00 PT（DAM Market Close / bid cutoff，官方 BPM；13:00 是 DA 结果发布 = label 可见时点）。
 - 决策时点可见的**历史/静态信息 → X（38 特征）**；D+1 的实际 DA / RTPD / Return **仅进 label 区**，绝不进入 X。
 
 ## 2. X 区：38 个决策时点可见特征
@@ -27,14 +27,14 @@
 
 | 字段 | 定义 | available_at |
 |---|---|---|
-| `actual_da` | target_date 当日 DA 清价（$/MWh） | T−1 13:00（出清后） |
+| `actual_da` | target_date 当日 DA 清价（$/MWh） | T−1 13:00（DA 结果发布，非 bid cutoff） |
 | `actual_rtpd` | target_date 当日 RTPD | T 日深夜（实时市场） |
 | `actual_return` | actual_da − actual_rtpd（契约冻结 = DARTPD Return） | 两者齐备后 |
 | `direction` | sign(actual_return)：+1 / −1 / 0 | 两者齐备后 |
 
 ## 4. 防泄漏设计
 
-- **滞后统一 T−2 起**：DA(T−1) 虽已于 T−2 13:00 出清，但 RTPD(T−1) 决策日深夜才完整 → lag1=T−2、lag2=T−3、lag7=T−8，宁保守不泄漏。
+- **滞后统一 T−2 起**：DA(T−1) 虽已于 T−2 13:00 出清（DA 结果发布，非 bid cutoff），但 RTPD(T−1) 决策日深夜才完整 → lag1=T−2、lag2=T−3、lag7=T−8，宁保守不泄漏。
 - **rolling 锚定 T−2**：滚动统计在"交付日对齐"宽表上 `rolling(w).mean()/std().shift(2)`，窗口最新一天 = T−2（覆盖 T−2..T−(w+1)），同 hour 对齐。
 - **日级特征正确广播到 24h**：以 date 为键 merge 广播，修复旧实现的幽灵 hour=0 行与单 hour 落值错位。
 - **天气 `*_next` 禁用**：`t2m_next/ssrd_next/wind100_next` 为目标日实际天气（ERA5 再分析 + 合成段），决策时不可得（穿越），默认禁用；只保留历史滞后 `*_lag1`。

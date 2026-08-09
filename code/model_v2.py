@@ -458,7 +458,7 @@ def main():
         "final_model": sel_meta,
         "feature_list": feat_list,
         "feature_boundary_notes": [
-            "只用 canonical X 区 38 个特征，全部 available_at <= decision_cutoff（D-1 13:00 DA bid cutoff 前），无泄漏（feature_availability_matrix.md）。",
+            "只用 canonical X 区 38 个特征，全部 available_at <= decision_cutoff（D-1 10:00 PT DAM Market Close 前），无泄漏（feature_availability_matrix.md）。",
             "【当前缺失真实 as-of weather forecast archive】——本版天气特征仅用历史滞后（t2m_lag1/ssrd_lag1/wind100_lag1，target_date-2 当天），+ 历史 Return 特征 + load_2da_forecast 作 strict baseline。未用任何目标日实际天气模拟预报；t2m_next/ssrd_next/wind100_next 保持禁用（穿越）。真实决策时点可获得的天气预报归档一旦到位，应替换/补充并重训重测。",
             "load_2da_forecast / load_peak_flag 为 ASSUMED_AVAILABLE（2DA 日前负荷预测，schema 标注）。canonical 内 train/val/test 无缺失，但原始 load_CA_ISO_TAC_2DA.csv 仅到 2026-07-09，8 月 test 行取值来自 master.csv（已并入更新源）；真实部署需确认 2DA 发布时刻与口径。",
             "天气滞后特征在 2026-07-01..07-29 部分日缺失（树模型原生处理 NaN）；peer_* 对 ELCA 恒 NaN（无同区节点，树模型按缺失处理）。",

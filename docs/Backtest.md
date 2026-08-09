@@ -7,7 +7,7 @@
 | 属性 | 说明 |
 |---|---|
 | 消费对象 | 任意模型预测 CSV（统一 schema，8 个核心列）：`node, target_date, hour, split, pred_direction, expected_return, confidence, prob_return_positive, actual_return`（`actual_direction` 缺失时由 `sign(actual_return)` 派生；`spread_std7`/`evidence` 等为可选列） |
-| as-of 铁律 | 只用 decision_cutoff（D-1 13:00，DA bid cutoff 前）可见信息；特征仅取 canonical X 列；不含 target_date 实际值 / `*_next` 天气 / label 区 |
+| as-of 铁律 | 只用 decision_cutoff（D-1 10:00 PT，DAM Market Close / bid cutoff）可见信息；特征仅取 canonical X 列；不含 target_date 实际值 / `*_next` 天气 / label 区 |
 | Rule（Model 0） | 天然 walk-forward：`expected_return` = 同 node 同 hour 近 14 日均值 `spread_mean14`（shift2，仅 target_date-2..-15）；`prob_return_positive` = 近 14 个同 hour 交付日 spread>0 占比（向 0.5 收缩）；`confidence` = 方向一致性 \|prob−0.5\|×2 |
 | Interpretable（Model 1） | Logistic（方向）+ Linear（幅度），expanding-window 每 15 天用已实现标签重拟合；imputer/scaler 只由历史拟合 |
 | CatBoost（Model 2） | Agent C 正式预测，按统一 schema 直接消费 |

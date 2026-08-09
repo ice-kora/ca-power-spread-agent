@@ -9,6 +9,9 @@ Evidence Time Gate 单元测试（unittest，无第三方依赖）。
   Test 2  published 11:00 >  cutoff 10:00 -> decision_eligible = FALSE（不得进入 Risk Gate）
   Test 3  D+1 actual weather（即使高度相关）-> decision_eligible = FALSE
   Test 4  历史回测中 published_at > historical decision_cutoff -> 触发 Leakage Guard（隔离）
+  Test 5  feature available_at <= decision_cutoff -> 允许进入生产特征
+  Test 6  feature available_at >  decision_cutoff -> 禁止进入生产（business_contract §4 铁律）
+  Test 7  边界：available_at == decision_cutoff -> 允许（规则只禁严格大于）
 
 运行：python agent/evidence/test_time_gate.py   （或 python -m unittest 发现）
 """
@@ -22,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from agent.evidence.schema import new_uncertain_evidence, parse_timestamp  # noqa: E402
 from agent.evidence.time_gate import (  # noqa: E402
     is_decision_eligible,
+    is_available_before_cutoff,
     split_eligible,
     assert_no_post_decision,
 )
@@ -77,6 +81,50 @@ class TestTimeGate(unittest.TestCase):
         # 防御断言：把 post-decision 误传进决策层必须抛错（Leakage Guard）
         with self.assertRaises(RuntimeError):
             assert_no_post_decision([ev], CUTOFF_10)
+
+    # -- 特征可用性门槛（business_contract §4：available_at > decision_cutoff 禁止）---
+
+    """Test 5: feature available_at(09:00) <= decision_cutoff(10:00) -> 允许进入生产特征"""
+
+    def test_5_feature_available_before_cutoff(self):
+        self.assertTrue(is_available_before_cutoff("2025-07-09T09:00:00", CUTOFF_10))
+        # evidence 口径等价：published_at <= cutoff -> eligible
+        ev = new_uncertain_evidence(
+            published_at="2025-07-09T09:00:00", decision_cutoff=CUTOFF_10)
+        eligible, post = split_eligible([ev], CUTOFF_10)
+        self.assertEqual(len(eligible), 1)
+        self.assertEqual(len(post), 0)
+
+    """Test 6: feature available_at(11:00) > decision_cutoff(10:00) -> 禁止进入生产"""
+
+    def test_6_feature_available_after_cutoff_forbidden(self):
+        # 特征/证据可用时点晚于 bid cutoff -> 不得进训练/推理/决策
+        self.assertFalse(is_available_before_cutoff("2025-07-09T11:00:00", CUTOFF_10))
+        ev = new_uncertain_evidence(
+            published_at="2025-07-09T11:00:00", decision_cutoff=CUTOFF_10)
+        eligible, post = split_eligible([ev], CUTOFF_10)
+        self.assertEqual(len(eligible), 0)
+        self.assertEqual(len(post), 1)  # 隔离到 post_decision
+        with self.assertRaises(RuntimeError):  # 误传进生产决策层 -> Leakage Guard 拦截
+            assert_no_post_decision([ev], CUTOFF_10)
+
+    """Test 7: 边界 —— available_at == decision_cutoff -> 允许（规则只禁严格大于）"""
+
+    def test_7_feature_available_exactly_at_cutoff(self):
+        self.assertTrue(is_available_before_cutoff("2025-07-09T10:00:00", CUTOFF_10))
+        ev = new_uncertain_evidence(
+            published_at="2025-07-09T10:00:00", decision_cutoff=CUTOFF_10)
+        eligible, post = split_eligible([ev], CUTOFF_10)
+        self.assertEqual(len(eligible), 1)  # == cutoff 属于 Pre-decision
+        self.assertEqual(len(post), 0)
+
+    def test_feature_available_missing_or_unparseable(self):
+        # 缺失 / 不可解析 -> False（宁保守不穿越）
+        self.assertFalse(is_available_before_cutoff("", CUTOFF_10))
+        self.assertFalse(is_available_before_cutoff(None, CUTOFF_10))
+        self.assertFalse(is_available_before_cutoff("not-a-timestamp", CUTOFF_10))
+        # cutoff 缺失同样不可用
+        self.assertFalse(is_available_before_cutoff("2025-07-09T09:00:00", ""))
 
     # -- 附加：时间缺失 / 不可解析（NOT_BACKTEST_SAFE 语义）-----------------
     def test_missing_time_is_not_eligible(self):
