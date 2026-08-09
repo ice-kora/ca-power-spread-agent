@@ -71,7 +71,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 import pandas as pd  # noqa: E402
-from flask import Flask, abort, jsonify, render_template, request  # noqa: E402
+from flask import Flask, Response, abort, jsonify, render_template, request  # noqa: E402
 
 from code.decision_service import (  # noqa: E402
     ALPHA_LABEL,
@@ -147,12 +147,11 @@ except Exception:  # pragma: no cover
 # 黄金案例（docs/mvp_demo_cases.md；全为真实 test 窗口数据）
 # ---------------------------------------------------------------------------
 GOLDEN_CASES: List[Dict[str, Any]] = [
-    {"id": "B",  "label": "B · SELL 盈利（彩票右尾）",        "decision_date": "2026-07-16", "node": "CONTROLX_1_N001", "hour": 3},
-    {"id": "C1", "label": "C1 · NO_TRADE 避险（RiskGate 成功）", "decision_date": "2026-07-08", "node": "CONTROLX_1_N001", "hour": 2},
-    {"id": "C2", "label": "C2 · NO_TRADE 弱信号",             "decision_date": "2026-07-10", "node": "SNLNDRO_1_N001",  "hour": 10},
-    {"id": "D",  "label": "D · 模型 SELL 但错（诚实展示）",   "decision_date": "2026-07-20", "node": "SNLNDRO_1_N001",  "hour": 20},
-    {"id": "E",  "label": "E · Evidence 被 Time Gate 拒（同 C1 参数，看隔离证据）",
-                                                               "decision_date": "2026-07-08", "node": "CONTROLX_1_N001", "hour": 2},
+    {"id": "B",  "label": "案例 A｜正常 SELL 决策（预期 DA > RT）",  "decision_date": "2026-07-16", "node": "CONTROLX_1_N001", "hour": 3},
+    {"id": "C1", "label": "案例 B｜风控阻止交易（Risk Gate REJECT）", "decision_date": "2026-07-08", "node": "CONTROLX_1_N001", "hour": 2},
+    {"id": "C2", "label": "案例 C｜信号不足不交易（弱信号）",       "decision_date": "2026-07-10", "node": "SNLNDRO_1_N001",  "hour": 10},
+    {"id": "D",  "label": "案例 D｜模型判断错误（诚实展示）",       "decision_date": "2026-07-20", "node": "SNLNDRO_1_N001",  "hour": 20},
+    {"id": "E",  "label": "案例 E｜未来信息被拒绝（Time Gate）",    "decision_date": "2026-07-08", "node": "CONTROLX_1_N001", "hour": 2},
 ]
 
 
@@ -835,6 +834,21 @@ def ask_copilot(question: str, decision_id: Optional[str] = None) -> Dict[str, A
                 "tools_called": [], "trace": [], "llm_status": "ERROR"}
 
 
+def _copilot_for_decision(decision_id: Optional[str]):
+    """构造绑定"持有该 decision_id 的 DecisionService"的 Copilot（V0.3.2 streaming）。"""
+    import code.llm_copilot as _lc  # noqa: PLC0415
+    svc = _find_service(decision_id) if decision_id else (
+        _SERVICES.get("real") or next(iter(_SERVICES.values()), None)
+    )
+    return _lc.make_copilot(service=svc)
+
+
+def ask_copilot_stream(question: str, decision_id: Optional[str] = None):
+    """流式 Ask：委托 llm_copilot.ask_stream，产出 (event, data) 事件序列。"""
+    cp = _copilot_for_decision(decision_id)
+    return cp.ask_stream(question=question, decision_id=decision_id)
+
+
 # ---------------------------------------------------------------------------
 # 路由：页面
 # ---------------------------------------------------------------------------
@@ -1059,6 +1073,38 @@ def api_ask():
         result["error"] = {"code": cat["code"], "message": cat["message"],
                            "suggested_action": cat["action"]}
     return jsonify({"status": "ok", **result})
+
+
+@app.post("/api/ask/stream")
+def api_ask_stream():
+    """SSE 流式 Ask（V0.3.2）：agent_status / tool_start / tool_result /
+    answer_delta / answer_done / guard / error。Tool 为真实执行，Guard 保留。"""
+    data = request.get_json(force=True, silent=True) or {}
+    question = str(data.get("question", "") or "").strip()
+    decision_id = (data.get("decision_id") or None)
+    if not question:
+        return _error("INVALID_REQUEST", "缺少问题（question 必填）。",
+                      "请在 Ask Agent 输入框输入问题后重试。", 400)
+    if decision_id and _find_service(decision_id) is None:
+        return _error("NOT_FOUND", f"决策 {decision_id!r} 不存在（先运行一次决策）。",
+                      ERROR_CATALOG["NOT_FOUND"]["action"], 404)
+
+    def gen():
+        yield "retry: 1000\n\n"
+        try:
+            for ev, payload in ask_copilot_stream(question, decision_id):
+                s = json.dumps(payload, ensure_ascii=False, default=str)
+                yield f"event: {ev}\ndata: {s}\n\n"
+        except Exception as exc:  # noqa: BLE001
+            s = json.dumps({"message": f"LLM ERROR: {type(exc).__name__}: {exc}"},
+                           ensure_ascii=False, default=str)
+            yield f"event: error\ndata: {s}\n\n"
+
+    resp = Response(gen(), mimetype="text/event-stream")
+    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["X-Accel-Buffering"] = "no"
+    resp.headers["Connection"] = "keep-alive"
+    return resp
 
 
 # ---------------------------------------------------------------------------

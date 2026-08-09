@@ -54,7 +54,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -622,6 +622,24 @@ def _summary_of(result: Any) -> str:
     return s
 
 
+#: 工具中文名（V0.3.2 业务化 Agent 工作轨迹；只影响展示，不影响 Tool 逻辑）
+_TOOL_ZH = {
+    "get_decision": "查询当前交易建议",
+    "get_feature_explanation": "查询模型参考特征",
+    "get_evidence": "查询外部证据（使用 / 拒绝）",
+    "get_similar_cases": "查询类似历史案例",
+    "get_data_provenance": "查询数据血缘",
+    "get_post_trade_review": "查询事后复盘",
+}
+
+
+def _chunk_text(text: Any, size: int = 8) -> Iterator[str]:
+    """把回答按字符分块（流式输出 transport 用；不改变内容）。"""
+    text = str(text or "")
+    for i in range(0, len(text), size):
+        yield text[i:i + size]
+
+
 def _load_env_file():
     """把项目根 .env（若存在）加载到 os.environ，不覆盖已有变量。
 
@@ -1033,6 +1051,84 @@ class LLMCopilot:
 
         return self._response(answer, tools_called, question, trace, trace_steps, status, mode)
 
+    # ------------------------------------------------------------- 流式 Ask（V0.3.2）
+    def ask_stream(self, question: str, decision_id: Optional[str] = None,
+                   context: Optional[Dict[str, Any]] = None) -> Iterator[tuple]:
+        """流式 Ask：真实 Tool 执行 + 数字/方向守卫，逐步产出 (event, data)。
+
+        event ∈ {agent_status, tool_start, tool_result, answer_delta, answer_done,
+                  guard, degraded, error}
+        - 只展示 Tool / Action 工作轨迹（Question → Tool → Result → Answer），
+          **不展示任何 LLM private chain-of-thought**。
+        - 预置问题 → 逐工具实时流式（工具真实执行，不伪造）；非预置 → 同步执行后
+          分块输出最终回答（progressive fallback，transport 层视觉流式）。
+        - 守卫 `_assert_answer_integrity` 保留：LLM 不得覆盖工具数字 / 最终方向。
+        """
+        question = str(question or "").strip()
+        yield ("agent_status", {"label": "正在分析当前决策…"})
+        if not question:
+            yield ("error", {"code": "EMPTY_QUESTION", "message": "问题为空，请输入要追问的内容。"})
+            return
+
+        route = _match_preset(question)
+        if route is not None:
+            plan = self._build_plan_for_route(route, decision_id, context)
+            if plan == "INSUFFICIENT":
+                yield ("answer_delta",
+                       {"text": "无法确定决策对象：请先运行一次决策，或提供 decision_date / node / hour。"})
+                yield ("answer_done", {})
+                return
+            tools_called: List[Dict[str, Any]] = []
+            steps: List[Dict[str, Any]] = []
+            for item in plan:
+                tool = str(item.get("tool", ""))
+                args = dict(item.get("args") or {})
+                if args.get("decision_id") == "@latest":
+                    args["decision_id"] = self._latest_decision_id()
+                    if not args["decision_id"]:
+                        yield ("tool_result", {"tool": tool, "status": "error",
+                                               "label": _TOOL_ZH.get(tool, tool),
+                                               "result_summary": "无法解析 decision_id"})
+                        break
+                yield ("tool_start", {"tool": tool, "label": _TOOL_ZH.get(tool, tool)})
+                result = self._execute_tool(tool, args)
+                summary = _summary_of(result)
+                tools_called.append({"tool": tool, "args": args, "result": result,
+                                     "result_summary": summary})
+                steps.append({"stage": "tool", "tool": tool, "arguments": args,
+                              "result_summary": summary, "status": result.get("status", "ok")})
+                yield ("tool_result", {"tool": tool, "status": result.get("status", "ok"),
+                                       "label": _TOOL_ZH.get(tool, tool), "result_summary": summary})
+            if self.client is None:
+                yield ("answer_delta", {"text": LLM_NOT_CONFIGURED_MSG})
+                yield ("answer_done", {})
+                return
+            messages = self._build_messages(question, decision_id, context, tools_called)
+            answer = self._call_final_answer(messages, steps, "preset")
+            if tools_called:
+                ok, detail = _assert_answer_integrity(answer, tools_called)
+                if ok:
+                    yield ("guard", {"status": "PASS", "detail": ""})
+                else:
+                    answer = "Agent 回答未通过一致性检查，请重新查询。"
+                    yield ("guard", {"status": "BLOCKED", "detail": detail})
+            for chunk in _chunk_text(answer):
+                yield ("answer_delta", {"text": chunk})
+            yield ("answer_done", {})
+        else:
+            yield ("agent_status", {"label": "正在调用决策工具…"})
+            out = self.ask(question, decision_id, context, trace=False)
+            for tc in out.get("tools_called", []):
+                yield ("tool_result", {"tool": tc.get("tool", ""), "status": "ok",
+                                       "label": _TOOL_ZH.get(tc.get("tool", ""), tc.get("tool", "")),
+                                       "result_summary": tc.get("result_summary", "")})
+            if out.get("status") == "blocked":
+                yield ("guard", {"status": "BLOCKED",
+                                 "detail": str(out.get("answer", ""))[:200]})
+            for chunk in _chunk_text(out.get("answer", "")):
+                yield ("answer_delta", {"text": chunk})
+            yield ("answer_done", {})
+
     def _response(self, answer: str, tools_called, question: str, trace_enabled: bool,
                   trace_steps: List[Dict[str, Any]], status: str,
                   mode: str) -> Dict[str, Any]:
@@ -1091,6 +1187,17 @@ def ask(question: str, decision_id: Optional[str] = None,
     else:
         cp = make_copilot(service=service, **kw)
     return cp.ask(question, decision_id=decision_id, context=context, trace=trace)
+
+
+def ask_stream(question: str, decision_id: Optional[str] = None,
+               context: Optional[Dict[str, Any]] = None,
+               service=None, **kw) -> Iterator[tuple]:
+    """流式 Ask（SSE transport）主入口：产出 (event, data) 事件序列。"""
+    if not kw:
+        cp = default_copilot(service=service)
+    else:
+        cp = make_copilot(service=service, **kw)
+    return cp.ask_stream(question, decision_id=decision_id, context=context)
 
 
 def copilot_status(service=None, **kw) -> Dict[str, Any]:

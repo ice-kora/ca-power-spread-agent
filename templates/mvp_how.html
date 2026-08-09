@@ -49,6 +49,30 @@
     <li><b>不造假</b>：决策路径无 MOCK；无真实证据时诚实显示 "NO ELIGIBLE EXTERNAL EVIDENCE"，宁可知晓未知，不可编造方向。</li>
   </ul>
 
+  <h2>Agent 做什么 / 不做什么</h2>
+  <div class="sem-grid">
+    <div class="item"><div class="t ok">✓ Agent 做什么</div>
+      <ul style="margin:6px 0 0 18px">
+        <li>理解交易员的问题</li>
+        <li>调用决策工具（查询建议 / 特征 / 证据 / 案例 / 数据血缘 / 复盘）</li>
+        <li>解释系统为什么这么判断</li>
+        <li>事后帮助复盘</li>
+      </ul>
+    </div>
+    <div class="item"><div class="t err">✕ Agent 不做什么</div>
+      <ul style="margin:6px 0 0 18px">
+        <li>不自行修改交易方向（BUY / SELL / NO_TRADE）</li>
+        <li>不绕过 Risk Gate</li>
+        <li>不编造市场数据</li>
+        <li>不使用截止后的未来信息</li>
+        <li>不自动下单</li>
+      </ul>
+    </div>
+  </div>
+  <div class="notice" style="background:#eaf1ff"><span class="tag">关键</span>
+    <p><b>LLM 不直接决定 BUY / SELL。</b> 交易方向一律由白盒 DecisionService + 规则引擎 + 风控程序决定；LLM 只解释，且不能修改/覆盖工具返回的数字与最终建议（程序化完整性守卫拦截）。</p>
+  </div>
+
   <h2>Rule Engine 规则表</h2>
   <table>
     <thead><tr><th>规则</th><th>条件</th><th>决策</th></tr></thead>
@@ -73,7 +97,7 @@
     PnL 按 1 MWh/仓 简化；结算仅覆盖 DAM/RTPD 价差，不含 FMM/阻塞/费用等完整结算。</p>
   </div>
 
-  <div class="back"><a href="/">← 返回 Decision Workspace</a></div>
+  <div class="back"><a href="/">← 返回交易决策</a></div>
 </div>
 </body>
 </html>
