@@ -442,7 +442,7 @@ function renderS4() {
           <span class="tag-soft">${esc(e.directional_effect || "UNCERTAIN")}</span>
           ${e.is_mock ? '<span class="tag-soft rej">MOCK</span>' : ""}</div>
         <div class="summary">${esc(e.summary)}</div>
-        <div class="meta">published_at: ${esc(e.published_at || "—")} · available_at: ${esc(e.available_at || "—")} · cutoff: ${esc(e.decision_cutoff || "—")}</div>
+        <div class="meta">published_at (Estimate): ${esc(e.published_at || "—")} · available_at: ${esc(e.available_at || "—")} · cutoff: ${esc(e.decision_cutoff || "—")}</div>
       </div>`).join("") + `</div>`;
   } else {
     html += `<div class="empty">NO ELIGIBLE EXTERNAL EVIDENCE —— 决策时点（10:00 PT）前无可用真实外部证据。<br>不编造证据：宁可未知，不可乱判方向。</div>`;
@@ -473,7 +473,7 @@ function renderS4() {
           ${e.is_mock ? '<span class="tag-soft rej">MOCK</span>' : ""}
           <span class="tag-soft rej">NOT USED</span></div>
         <div class="summary">${esc(e.summary)}</div>
-        <div class="meta">Forecast Run / Initialization Time: <b>${esc(init)}</b> · Published At: ${esc(e.published_at || "—")} · Retrieved At: ${esc(e.retrieved_at || "—")}</div>
+        <div class="meta">Forecast Run / Initialization Time: <b>${esc(init)}</b> · Published At Estimate: ${esc(e.published_at || "—")} · Retrieved At: ${esc(e.retrieved_at || "—")}</div>
         <div class="meta">Available At: <b>${esc(avail)}</b> · Decision Cutoff: <b>${esc(cut)}</b></div>
         <div class="meta">Decision Eligible: <b>NO</b> · Reason: <b>${esc(reason)}</b></div>
         <div class="muted" style="font-size:12px;margin-top:4px">${esc(bizNote)}</div>

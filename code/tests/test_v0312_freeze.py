@@ -12,7 +12,7 @@ code/tests/test_v0312_freeze.py —— V0.3.1.2 Final Demo Freeze Patch 15 项�
   F6  market_rule_version_for date-aware 单源（2026-05-01 边界）
   F7  DecisionService context.market_rule_version 按 target_date date-aware
   F8  2026-05-01+ 案例标 POST（Case.from_dict 按 decision_date 推断，无需改数据）
-  F9  available_at-only eligibility（证据判据 available_at<=cutoff；缺失回退 published_at）
+  F9  available_at-only eligibility（证据判据 available_at<=cutoff；缺失不可决策，不 fallback）
   F10 Web 审计复验用 available_at（源码含 available_at or published_at）
   F11 交易核心冻结：5 个 Golden Case final/gate 与 V0.3.1.1 完全一致
   F12 decision_service 不再 import mvp_demo（打破循环依赖，单一实现）

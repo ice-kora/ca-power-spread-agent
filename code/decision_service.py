@@ -676,9 +676,9 @@ class HistoricalSnapshotEvidenceAdapter(EvidenceAdapter):
 def _normalize_evidence_rows(evs: Sequence[Any]) -> List[Dict[str, Any]]:
     """把 Time Gate 切分结果标准化为 Evidence dict（available_at-only 收口）。
 
-    V0.3.1.3：Schema 入口负责填 available_at（published_at 显式迁移 available_at）；
+    V0.3.1.5：available_at 只由 Source Adapter 显式写出（Schema **不**迁移 published_at）；
     Time Gate 只判 available_at；DecisionService / Web 只消费**标准化后的 available_at**
-    （不重新推导），保证"展示 available_at == Time Gate 判定"完全一致。
+    （不重新推导、不 fallback published_at），保证"展示 available_at == Time Gate 判定"完全一致。
     """
     rows = []
     for e in evs:

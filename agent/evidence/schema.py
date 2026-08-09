@@ -11,9 +11,11 @@ Agent Evidence 的统一数据结构（V0.2 白盒交易决策 Agent · 模块 1
 
 As-of Decision-Time Evidence 硬约束（本次修正核心）：
   - 任何 Evidence 必须满足 available_at <= decision_cutoff 才能参与交易建议（Pre-decision）。
-    available_at 由 Collector/Adapter 在进入 AsOfRecord/Evidence Schema 时**显式填好**
-    （若 published_at 本身即真正可用时刻，须显式写 available_at = published_at）；
-    缺失 = 不可参与决策（MISSING_AVAILABLE_AT），**绝不 fallback** published_at。
+    available_at 是**唯一** eligibility timestamp，只能由 Source Adapter / Collector
+    **显式写出**（若源能证明 published_at 即真正可用时刻，Adapter 显式写
+    available_at = published_at 并标注 SOURCE_PUBLISHED_AT_IS_PROVEN_AVAILABILITY）；
+    Schema / Time Gate / DecisionService / Web / Tool **禁止**自动推断 / fallback /
+    migration。available_at 缺失 → 不可参与决策（AVAILABILITY_NOT_PROVEN）。
   - decision_eligible 由程序计算（见 Evidence.decision_eligible / time_gate.py），
     禁止由 LLM 自行判断可用性。
   - available_at > decision_cutoff（或缺失不可证）的证据 = Post-decision Evidence，
@@ -202,7 +204,7 @@ class Evidence:
     raw_source_id: str = ""
     published_at: str = ""
     available_at: str = ""
-    available_at_source: str = ""      # 诚实标注 available_at 来源：available_at / published_at（显式迁移）/ NOT_PROVEN
+    available_at_source: str = ""      # available_at 来源：available_at / SOURCE_PUBLISHED_AT_IS_PROVEN_AVAILABILITY（Adapter 显式）/ NOT_PROVEN
     initialization_time: str = ""      # forecast run 初始化时刻（Strong Impossibility：init>cutoff → 必然不可用）
     retrieved_at: str = ""
     target_time: str = ""
@@ -296,16 +298,13 @@ class Evidence:
         self.available_at_source = _coerce_str(self.available_at_source)
         self.initialization_time = _coerce_str(self.initialization_time)
         self.retrieved_at = _coerce_str(self.retrieved_at)
-        # V0.3.1.3 available-at-only 收口：Time Gate 只判 available_at。
-        # Schema 入口（Adapter/工厂）负责填 available_at：若 published_at 即真正
-        # 可用时刻，**显式迁移** available_at = published_at（诚实标注 source）。
-        # 仅当 available_at_source 未标注（= 未显式声明"此 available_at 缺失"）才迁移；
-        # 数据源显式标注缺失（如 GFS 12Z/18Z 无可靠 vintage）则不迁移 →
-        # available_at 保持空 = MISSING_AVAILABLE_AT，绝不隐式回退 / 猜 initialization_time。
-        if not self.available_at and not self.available_at_source and self.published_at:
-            self.available_at = self.published_at
-            self.available_at_source = "published_at（显式迁移）"
-        elif self.available_at and not self.available_at_source:
+        # V0.3.1.5 Final Invariant：Schema **只做 Schema**，不做业务推断。
+        # 禁止 Schema 自动 published_at → available_at（fallback / migration /
+        # substitution）。published_at 只是发布元数据；available_at 是唯一 eligibility
+        # timestamp，只能由 **Source Adapter 显式写出**（或在构造时已显式提供）。
+        # available_at 缺失 → 保持 ""（AVAILABILITY_NOT_PROVEN / NOT ELIGIBLE），
+        # 绝不隐式回退 / 猜 initialization_time / 猜 init+delay。
+        if self.available_at and not self.available_at_source:
             self.available_at_source = "available_at"
         self.target_time = _coerce_str(self.target_time)
         self.decision_cutoff = _coerce_str(self.decision_cutoff)

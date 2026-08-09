@@ -82,6 +82,7 @@ def _mk_ev(eid: str, published_at: str, *, severity: str = "WATCH",
         "is_mock": is_mock,
         "raw_source_id": eid,
         "published_at": published_at,
+        "available_at": published_at,   # Source Adapter 显式：published 即真正可用时刻
         "retrieved_at": "2026-08-09T00:00:00",
         "target_time": "2026-07-09T02:00:00",
         "decision_cutoff": CUTOFF_UTC,

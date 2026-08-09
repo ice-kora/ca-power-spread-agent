@@ -34,6 +34,7 @@ CUTOFF = "2025-07-09T10:00:00"
 def _ev(**over):
     base = {
         "published_at": "2025-07-09T09:00:00",
+        "available_at": "2025-07-09T09:00:00",   # Source Adapter 显式：published 即真正可用时刻
         "retrieved_at": "2025-07-09T09:30:00",
         "decision_cutoff": CUTOFF,
     }
@@ -75,7 +76,7 @@ class TestEvidenceProvenance(unittest.TestCase):
         self.assertTrue(ev.decision_eligible)
 
     def test_real_after_cutoff_ineligible(self):
-        ev = _ev(published_at="2025-07-09T11:00:00")
+        ev = _ev(published_at="2025-07-09T11:00:00", available_at="2025-07-09T11:00:00")
         self.assertFalse(ev.time_eligible)
         self.assertFalse(ev.backtest_eligible)
         self.assertFalse(ev.production_eligible)

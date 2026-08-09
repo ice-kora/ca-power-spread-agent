@@ -49,7 +49,8 @@ class TestTimeGate(unittest.TestCase):
 
     def test_1_eligible_before_cutoff(self):
         ev = new_uncertain_evidence(
-            published_at="2025-07-09T09:00:00", decision_cutoff=CUTOFF_10)
+            published_at="2025-07-09T09:00:00", available_at="2025-07-09T09:00:00",
+            decision_cutoff=CUTOFF_10)
         self.assertTrue(ev.decision_eligible)
         self.assertTrue(is_decision_eligible(ev))
         eligible, post = split_eligible([ev], CUTOFF_10)
@@ -60,7 +61,8 @@ class TestTimeGate(unittest.TestCase):
 
     def test_2_not_eligible_after_cutoff(self):
         ev = new_uncertain_evidence(
-            published_at="2025-07-09T11:00:00", decision_cutoff=CUTOFF_10)
+            published_at="2025-07-09T11:00:00", available_at="2025-07-09T11:00:00",
+            decision_cutoff=CUTOFF_10)
         self.assertFalse(ev.decision_eligible)
         self.assertFalse(is_decision_eligible(ev))
         eligible, post = split_eligible([ev], CUTOFF_10)
@@ -73,7 +75,7 @@ class TestTimeGate(unittest.TestCase):
         # D+1 当天实际天气：最早 D 日（2025-07-10）才可得，晚于 cutoff
         ev = new_uncertain_evidence(
             event_type="EXTREME_WEATHER",
-            published_at="2025-07-10T06:00:00",   # 次日实际观测发布时间
+            published_at="2025-07-10T06:00:00", available_at="2025-07-10T06:00:00",
             decision_cutoff=CUTOFF_10)
         self.assertFalse(ev.decision_eligible)
         # 即便 summary 声称"与当日负电价高度相关"，也不得进入决策
@@ -85,7 +87,7 @@ class TestTimeGate(unittest.TestCase):
 
     def test_4_historical_backtest_leakage_guard(self):
         ev = new_uncertain_evidence(
-            published_at="2025-07-10T12:00:00",  # 决策后才发布（如事后事故通告）
+            published_at="2025-07-10T12:00:00", available_at="2025-07-10T12:00:00",
             decision_cutoff=CUTOFF_10)
         # 单独判断：不可用
         self.assertFalse(ev.decision_eligible)
@@ -101,7 +103,8 @@ class TestTimeGate(unittest.TestCase):
         self.assertTrue(is_available_before_cutoff("2025-07-09T09:00:00", CUTOFF_10))
         # evidence 口径等价：published_at <= cutoff -> eligible
         ev = new_uncertain_evidence(
-            published_at="2025-07-09T09:00:00", decision_cutoff=CUTOFF_10)
+            published_at="2025-07-09T09:00:00", available_at="2025-07-09T09:00:00",
+            decision_cutoff=CUTOFF_10)
         eligible, post = split_eligible([ev], CUTOFF_10)
         self.assertEqual(len(eligible), 1)
         self.assertEqual(len(post), 0)
@@ -112,7 +115,8 @@ class TestTimeGate(unittest.TestCase):
         # 特征/证据可用时点晚于 bid cutoff -> 不得进训练/推理/决策
         self.assertFalse(is_available_before_cutoff("2025-07-09T11:00:00", CUTOFF_10))
         ev = new_uncertain_evidence(
-            published_at="2025-07-09T11:00:00", decision_cutoff=CUTOFF_10)
+            published_at="2025-07-09T11:00:00", available_at="2025-07-09T11:00:00",
+            decision_cutoff=CUTOFF_10)
         eligible, post = split_eligible([ev], CUTOFF_10)
         self.assertEqual(len(eligible), 0)
         self.assertEqual(len(post), 1)  # 隔离到 post_decision
@@ -124,7 +128,8 @@ class TestTimeGate(unittest.TestCase):
     def test_7_feature_available_exactly_at_cutoff(self):
         self.assertTrue(is_available_before_cutoff("2025-07-09T10:00:00", CUTOFF_10))
         ev = new_uncertain_evidence(
-            published_at="2025-07-09T10:00:00", decision_cutoff=CUTOFF_10)
+            published_at="2025-07-09T10:00:00", available_at="2025-07-09T10:00:00",
+            decision_cutoff=CUTOFF_10)
         eligible, post = split_eligible([ev], CUTOFF_10)
         self.assertEqual(len(eligible), 1)  # == cutoff 属于 Pre-decision
         self.assertEqual(len(post), 0)
@@ -158,6 +163,7 @@ class TestMockHardIsolation(unittest.TestCase):
         return new_uncertain_evidence(
             event_type="WEATHER_FORECAST",
             published_at=published_at,
+            available_at=published_at,   # Source Adapter 显式：published 即真正可用时刻
             decision_cutoff=self.CUTOFF,
             is_mock=True,
             raw_source_id="mock-run-001",
@@ -187,9 +193,11 @@ class TestMockHardIsolation(unittest.TestCase):
     def test_split_by_eligibility_three_buckets(self):
         mock_ev = evidence_from_dict(self._mock())
         ok_ev = evidence_from_dict(new_uncertain_evidence(
-            published_at="2025-07-09T09:00:00", decision_cutoff=self.CUTOFF).to_dict())
+            published_at="2025-07-09T09:00:00", available_at="2025-07-09T09:00:00",
+            decision_cutoff=self.CUTOFF).to_dict())
         late_ev = evidence_from_dict(new_uncertain_evidence(
-            published_at="2025-07-10T06:00:00", decision_cutoff=self.CUTOFF).to_dict())
+            published_at="2025-07-10T06:00:00", available_at="2025-07-10T06:00:00",
+            decision_cutoff=self.CUTOFF).to_dict())
         eligible, demo_mock, post = split_by_eligibility(
             [mock_ev, ok_ev, late_ev], self.CUTOFF)
         self.assertEqual(len(eligible), 1)

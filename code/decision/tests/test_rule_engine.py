@@ -134,6 +134,7 @@ class TestRuleEngineEvidence(unittest.TestCase):
             "event_type": "OTHER",
             "affected_nodes": ["SNLNDRO_1_N001"],
             "published_at": published_at,
+            "available_at": published_at,   # Source Adapter 显式：published 即真正可用时刻
             "decision_cutoff": CUTOFF,
             "directional_effect": directional,
             "confidence": confidence,

@@ -117,10 +117,9 @@ def _region_of(node: str) -> str:
 def _finalize_eligible(ev: Evidence, asof_eligible: bool) -> Evidence:
     """保证 Evidence 重算的 decision_eligible == AsOfRecord 判定（单一事实来源）。
 
-    正常情况下（available_at 非空）schema 用 available_at 重算，天然一致；
-    仅当 AsOfRecord 判不可用、但 published_at 回退口径会让 Evidence 误判可用时
-    （如 12Z 冬令时边界：published 估计 == cutoff，但无可靠 vintage），
-    清空 published_at（绝不回退到 initialization_time），使重算与 AsOfRecord 一致。
+    V0.3.1.5：Schema **不** fallback published_at，available-at-only + Strong Impossibility
+    重算天然与 AsOfRecord 一致，此函数仅作为一致性防御；若不一致（不应发生），
+    仅清空 published_at（审计字段，不改变 available_at / eligibility 判定）。
     """
     if bool(ev.decision_eligible) != bool(asof_eligible):
         ev.published_at = ""

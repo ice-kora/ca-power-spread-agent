@@ -218,7 +218,7 @@ class V0311HardeningTests(unittest.TestCase):
         """Evidence published_at / available_at 不再混用：快照行同时保留两字段。"""
         evs = [
             _mk_ev("EV-BOTH", PRE_CUTOFF, available_at="2026-07-08T10:30:00"),
-            _mk_ev("EV-NO-AVAIL", PRE_CUTOFF),   # 无 available_at → 回退 published_at（诚实标注）
+            _mk_ev("EV-NO-AVAIL", PRE_CUTOFF),   # 只有 published_at → available_at 缺失
         ]
         svc = make_svc(evidence=StaticEvidenceAdapter(evs))
         dec = svc.run_decision(DD, NODE, HOUR)
@@ -230,12 +230,14 @@ class V0311HardeningTests(unittest.TestCase):
         self.assertEqual(b["available_at"], "2026-07-08T10:30:00")
         self.assertNotEqual(b["published_at"], b["available_at"])
         self.assertEqual(b["available_at_source"], "available_at")
-        # V0.3.1.3：无 available_at 但有 published_at → Schema 入口**显式迁移**
-        # available_at = published_at（诚实标注 source）；绝不隐式回退到 initialization_time
-        n = rows["EV-NO-AVAIL"]
+        # V0.3.1.5：只有 published_at、无 proven available_at → **不 eligible**
+        # （published_at 只是发布元数据，绝不迁移 / fallback 成可用时刻）
+        rej = {r["evidence_id"]: r for r in dec["evidence"]["rejected"]}
+        self.assertIn("EV-NO-AVAIL", rej)
+        n = rej["EV-NO-AVAIL"]
         self.assertEqual(n["published_at"], PRE_CUTOFF)
-        self.assertEqual(n["available_at"], PRE_CUTOFF)          # 显式迁移 available_at=published_at
-        self.assertEqual(n["available_at_source"], "published_at（显式迁移）")
+        self.assertEqual(n["available_at"], "")
+        self.assertIn("AVAILABILITY_NOT_PROVEN", n["rejection_reason"])
         # 决策路径（eligible）无 MOCK，Time Gate 正常
         self.assertTrue(all(rr["decision_eligible"] for rr in rows.values()))
 

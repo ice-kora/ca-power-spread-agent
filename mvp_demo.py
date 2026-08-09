@@ -58,6 +58,7 @@ from code.decision_service import (  # noqa: E402
     ALPHA_LABEL,
     DECISION_CUTOFF_DESC,
     DecisionService,
+    HistoricalSnapshotEvidenceAdapter,
     StaticEvidenceAdapter,
 )
 from code.data_acquisition.schemas import NODE_REGION  # noqa: E402
@@ -257,7 +258,7 @@ def render_section4(d) -> None:
         print("    （不编造证据：宁可未知，不可乱判方向）")
     if rejected:
         print()
-        print("  ▶ POST-DECISION / NOT USED（available_at 晚于 cutoff → 只进复盘，绝不影响决策）：")
+        print("  ▶ POST-DECISION / NOT USED（初始化晚于 cutoff 或可用性不可证 → 只进复盘，绝不影响决策）：")
         for r in rejected:
             print(f"    · [{r['event_type']}/{r['severity']}] {r['source']}")
             print(f"      summary      : {r['summary']}")
@@ -447,7 +448,14 @@ def main() -> None:
     node = args.node
     hour = int(args.hour)
 
-    adapter = StaticEvidenceAdapter([]) if args.offline else None
+    # V0.3.1.5：三端一致 —— DEMO MODE 用真实历史 GFS 快照（HISTORICAL_SNAPSHOT，可重复），
+    # FULL/LIVE 用真实 Collector，offline 用静态（NONE）；均不 fallback published_at。
+    if args.offline:
+        adapter = StaticEvidenceAdapter([])
+    elif DATA_MODE == MODE_DEMO:
+        adapter = HistoricalSnapshotEvidenceAdapter()
+    else:
+        adapter = None            # DefaultEvidenceAdapter（FULL/LIVE 真实 Collector）
     svc = DecisionService(evidence_adapter=adapter)
 
     if args.list_rows:

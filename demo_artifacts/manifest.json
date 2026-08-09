@@ -2,8 +2,8 @@
   "artifact_version": "1.0",
   "hash_algorithm": "sha256",
   "hash_normalization": "canonical-text",
-  "generated_at": "2026-08-09T11:19:16Z",
-  "source_commit": "2fbaa171810587784ec7ca506a014988f17f0492",
+  "generated_at": "2026-08-09T11:50:36Z",
+  "source_commit": "9b5c3a5b79f4ed330aeb53ccabd3a1841cc08d7d",
   "data_mode": "DEMO",
   "contains_mock": false,
   "contains_future_outcome": true,
@@ -68,7 +68,7 @@
     "predictions_demo.csv": "a8c95c648586d034eb4f15e5f5a81ac98172e085e5dc331dd4ba9ed753dea4c8",
     "risk_features_demo.parquet": "c0950548c866c18871eda1724a385c987ab862df3aec8d8592218fea6251e873",
     "cases_demo.json": "3c4b9f5585a9a6dcfbb26bc7524edd6917b4ddd6db940fb057b4edaf4960fcd6",
-    "evidence_demo.json": "45894d5fb17c37a2afba7065642e606e51438c35fc0a6f2750b440c662273cb2"
+    "evidence_demo.json": "19aea33c6439b79731540740a25c31a72da924ea3db4a3bc58500cef30f0da99"
   },
   "files": {
     "canonical_demo.parquet": "Golden Cases 特征 + 实际结算切片",
@@ -76,12 +76,12 @@
     "risk_features_demo.parquet": "Golden Cases Risk Gate 风险特征切片",
     "cases_demo.json": "Golden Cases 案例库切片（真实，as-of）",
     "metadata.json": "生成信息 / 哈希 / 行数 / 诚实声明",
-    "evidence_demo.json": "Golden Case E 真实历史 GFS Evidence Snapshot（18Z，available_at>cutoff）"
+    "evidence_demo.json": "Golden Case E 真实历史 GFS Evidence Snapshot（18Z initialization_time > cutoff，available_at not proven → NOT ELIGIBLE / INITIALIZATION_AFTER_CUTOFF）"
   },
   "evidence_snapshot": {
     "source": "Open-Meteo Single Runs API (NCEP GFS 0.25°, gfs_global)",
     "source_timestamp": "2026-07-08T18:00:00",
-    "artifact_hash": "20f3043d341713a97d95b8f60779efdc0b2b71acf2a13dbe1cdb6f10bc4cdc84",
+    "artifact_hash": "c7d8c11611a769e987ae7d8c73f3bca387d83db767661d7254d32a1540aaba48",
     "hash_algorithm": "sha256",
     "hash_normalization": "canonical-text",
     "contains_mock": false,

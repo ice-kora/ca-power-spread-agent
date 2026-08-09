@@ -109,7 +109,8 @@ def build_snapshot(verbose: bool = True) -> dict:
         "source_type": ev.get("source_type", "WEATHER"),
         "forecast_run": CYCLE,
         "initialization_time": init,
-        "published_at": ev.get("published_at", ""),        # 真实存在的发布上界（审计保留）
+        "published_at": ev.get("published_at", ""),        # 保守发布上界（估算值，非历史真实观测）
+        "published_at_is_estimate": True,                  # V0.3.1.5：明确标注估算，不冒充真实发布时刻
         "available_at": available_at,                      # UNKNOWN（不伪造）
         "available_at_source": "NOT_PROVEN",
         "availability_proven": False,

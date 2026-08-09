@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "generated_by": "build_evidence_demo.py",
-  "generated_at": "2026-08-09T11:16:31Z",
+  "generated_at": "2026-08-09T11:50:35Z",
   "source": "Open-Meteo Single Runs API (NCEP GFS 0.25°, gfs_global)",
   "source_timestamp": "2026-07-08T18:00:00",
   "hash_algorithm": "sha256",
@@ -20,11 +20,12 @@
       "forecast_run": "18Z",
       "initialization_time": "2026-07-08T18:00:00",
       "published_at": "2026-07-09T00:00:00",
+      "published_at_is_estimate": true,
       "available_at": "",
       "available_at_source": "NOT_PROVEN",
       "availability_proven": false,
       "initialization_after_cutoff": true,
-      "retrieved_at": "2026-08-09T11:16:29",
+      "retrieved_at": "2026-08-09T11:50:33",
       "target_time": "2026-07-09T07:00:00",
       "node": "CONTROLX_1_N001",
       "region": "ZP26",
@@ -42,5 +43,5 @@
       "rejection_reason": "INITIALIZATION_AFTER_CUTOFF（AVAILABLE_AT_UNKNOWN：该 GFS 18Z run 在决策 cutoff 之后才开始初始化，available_at 必然更晚，因此不可能在 cutoff 前可用；其实际可用时间未知，不伪造）"
     }
   ],
-  "artifact_hash": "20f3043d341713a97d95b8f60779efdc0b2b71acf2a13dbe1cdb6f10bc4cdc84"
+  "artifact_hash": "c7d8c11611a769e987ae7d8c73f3bca387d83db767661d7254d32a1540aaba48"
 }
