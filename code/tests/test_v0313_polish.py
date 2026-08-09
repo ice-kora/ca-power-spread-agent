@@ -165,12 +165,12 @@ class V0313PolishTests(unittest.TestCase):
         elig, post = split_eligible([ev], CUTOFF_UTC)
         self.assertEqual(len(elig), 0)
         self.assertEqual([e.get("evidence_id") for e in post], ["EV-NO-TIME"])
-        # 服务层 rejection_reason 标注 MISSING_AVAILABLE_AT
+        # 服务层 rejection_reason 标注 AVAILABILITY_NOT_PROVEN（无 init 也无 available_at）
         svc = DecisionService(evidence_adapter=StaticEvidenceAdapter([ev]))
         d = svc.run_decision(DD, NODE, HOUR)
         rej = {r["evidence_id"]: r for r in d["evidence"]["rejected"]}
         self.assertIn("EV-NO-TIME", rej)
-        self.assertIn("MISSING_AVAILABLE_AT", rej["EV-NO-TIME"]["rejection_reason"])
+        self.assertIn("AVAILABILITY_NOT_PROVEN", rej["EV-NO-TIME"]["rejection_reason"])
 
     # ============================================================= P7 / P8
     def test_p7_p8_available_at_is_only_criterion(self):
@@ -241,7 +241,7 @@ class V0313PolishTests(unittest.TestCase):
             self.assertFalse(e.get("is_mock"), "Case E 证据不得为 MOCK")
 
     def test_p12_case_e_evidence_rejected_by_time_gate(self):
-        """Case E Evidence 被 Time Gate 拒绝：available_at>cutoff → AVAILABLE_AFTER_CUTOFF。"""
+        """Case E Evidence 被 Time Gate 拒绝：初始化晚于 cutoff → INITIALIZATION_AFTER_CUTOFF。"""
         svc = make_demo_svc()
         d = svc.run_decision(DD, NODE, HOUR)
         self.assertEqual(d["evidence"]["eligible"], [])
@@ -249,8 +249,10 @@ class V0313PolishTests(unittest.TestCase):
         self.assertTrue(rej, "Case E 应有被拒证据")
         e = rej[0]
         self.assertFalse(e["decision_eligible"])
-        self.assertGreater(e["available_at"], e["decision_cutoff"])
-        self.assertIn("AVAILABLE_AFTER_CUTOFF", e["rejection_reason"])
+        self.assertFalse(e.get("availability_proven"))               # available_at 未知
+        self.assertEqual(e["available_at"], "")                      # UNKNOWN，不伪造 init+delay
+        self.assertGreater(e["initialization_time"], e["decision_cutoff"])  # Strong Impossibility
+        self.assertIn("INITIALIZATION_AFTER_CUTOFF", e["rejection_reason"])
 
     def test_p13_case_e_evidence_does_not_change_final(self):
         """加入 Post-cutoff Evidence 前后 final_recommendation 完全一致（不影响交易结果）。"""
@@ -318,8 +320,9 @@ class V0313PolishTests(unittest.TestCase):
         checks = d["audit"]["checks"]
         self.assertIn("evidence_availability", checks)
         self.assertIn("evidence_provenance", checks)
-        # Case E 证据有 available_at + source → 两项真实 PASS
-        self.assertEqual(checks["evidence_availability"]["status"], "PASS")
+        # Case E 证据 available_at 未知 → Evidence Availability 如实 WARNING（诚实标注，不伪造时间）
+        self.assertEqual(checks["evidence_availability"]["status"], "WARNING")
+        # Provenance（source/raw_source_id/快照 contains_mock=false）齐备 → PASS
         self.assertEqual(checks["evidence_provenance"]["status"], "PASS")
         # Web 侧 audit 也包含两项
         import mvp_web  # noqa: PLC0415

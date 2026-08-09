@@ -1,15 +1,16 @@
 {
   "schema_version": "1.0",
   "generated_by": "build_evidence_demo.py",
-  "generated_at": "2026-08-09T10:24:56Z",
+  "generated_at": "2026-08-09T11:16:31Z",
   "source": "Open-Meteo Single Runs API (NCEP GFS 0.25°, gfs_global)",
-  "source_timestamp": "2026-07-09T00:00:00",
+  "source_timestamp": "2026-07-08T18:00:00",
   "hash_algorithm": "sha256",
   "hash_normalization": "canonical-text",
   "contains_mock": false,
   "historical_snapshot": true,
+  "available_at_proven": false,
   "raw_source_id": "run=2026-07-08T18:00:00&node=CONTROLX_1_N001",
-  "note": "真实历史 GFS 18Z forecast snapshot（Open-Meteo Single Runs 历史档案）。Demo 使用固定历史快照保证演示可重复；时间门仍按它真实的 available_at 判定。",
+  "note": "真实历史 GFS 18Z forecast snapshot（Open-Meteo Single Runs 历史档案）。该 run 初始化时刻（18:00 UTC）晚于决策 cutoff（17:00 UTC）→ INITIALIZATION_AFTER_CUTOFF；真实 available_at 未知（AVAILABLE_AT_UNKNOWN），不伪造可用时刻。Demo 使用固定历史快照保证演示可重复。",
   "records": [
     {
       "evidence_id": "GFS-18Z-2026-07-08-CONTROLX_1_N001",
@@ -19,8 +20,11 @@
       "forecast_run": "18Z",
       "initialization_time": "2026-07-08T18:00:00",
       "published_at": "2026-07-09T00:00:00",
-      "available_at": "2026-07-09T00:00:00",
-      "retrieved_at": "2026-08-09T10:24:50",
+      "available_at": "",
+      "available_at_source": "NOT_PROVEN",
+      "availability_proven": false,
+      "initialization_after_cutoff": true,
+      "retrieved_at": "2026-08-09T11:16:29",
       "target_time": "2026-07-09T07:00:00",
       "node": "CONTROLX_1_N001",
       "region": "ZP26",
@@ -34,8 +38,9 @@
       "is_mock": false,
       "historical_snapshot": true,
       "decision_eligible": false,
-      "rejection_reason": "AVAILABLE_AFTER_CUTOFF（POST_DECISION_EVIDENCE：available_at 晚于 decision_cutoff，只进复盘，绝不进入决策）"
+      "reason_code": "INITIALIZATION_AFTER_CUTOFF",
+      "rejection_reason": "INITIALIZATION_AFTER_CUTOFF（AVAILABLE_AT_UNKNOWN：该 GFS 18Z run 在决策 cutoff 之后才开始初始化，available_at 必然更晚，因此不可能在 cutoff 前可用；其实际可用时间未知，不伪造）"
     }
   ],
-  "artifact_hash": "17d6097546e302b3b6898aacf0eaa7a7fba08737975a313207c2b71218854242"
+  "artifact_hash": "20f3043d341713a97d95b8f60779efdc0b2b71acf2a13dbe1cdb6f10bc4cdc84"
 }

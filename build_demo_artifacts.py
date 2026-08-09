@@ -310,6 +310,7 @@ def _evidence_demo_meta() -> Optional[Dict[str, Any]]:
         "hash_normalization": str(doc.get("hash_normalization", HASH_NORMALIZATION)),
         "contains_mock": bool(doc.get("contains_mock", False)),
         "historical_snapshot": bool(doc.get("historical_snapshot", False)),
+        "available_at_proven": bool(doc.get("available_at_proven", False)),   # V0.3.1.4：不伪造可用时刻
         "raw_source_id": str(doc.get("raw_source_id", "")),
         "records_n": len(doc.get("records", []) or []),
     }

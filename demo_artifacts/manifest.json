@@ -2,8 +2,8 @@
   "artifact_version": "1.0",
   "hash_algorithm": "sha256",
   "hash_normalization": "canonical-text",
-  "generated_at": "2026-08-09T10:42:49Z",
-  "source_commit": "3ed9598e57a8971b46f9d38ceb3274d3110d046a",
+  "generated_at": "2026-08-09T11:19:16Z",
+  "source_commit": "2fbaa171810587784ec7ca506a014988f17f0492",
   "data_mode": "DEMO",
   "contains_mock": false,
   "contains_future_outcome": true,
@@ -68,7 +68,7 @@
     "predictions_demo.csv": "a8c95c648586d034eb4f15e5f5a81ac98172e085e5dc331dd4ba9ed753dea4c8",
     "risk_features_demo.parquet": "c0950548c866c18871eda1724a385c987ab862df3aec8d8592218fea6251e873",
     "cases_demo.json": "3c4b9f5585a9a6dcfbb26bc7524edd6917b4ddd6db940fb057b4edaf4960fcd6",
-    "evidence_demo.json": "f5646995e6285166e18e4f2e52e160144c65bf84a3c9aad97c7a811765b44c4e"
+    "evidence_demo.json": "45894d5fb17c37a2afba7065642e606e51438c35fc0a6f2750b440c662273cb2"
   },
   "files": {
     "canonical_demo.parquet": "Golden Cases 特征 + 实际结算切片",
@@ -80,12 +80,13 @@
   },
   "evidence_snapshot": {
     "source": "Open-Meteo Single Runs API (NCEP GFS 0.25°, gfs_global)",
-    "source_timestamp": "2026-07-09T00:00:00",
-    "artifact_hash": "17d6097546e302b3b6898aacf0eaa7a7fba08737975a313207c2b71218854242",
+    "source_timestamp": "2026-07-08T18:00:00",
+    "artifact_hash": "20f3043d341713a97d95b8f60779efdc0b2b71acf2a13dbe1cdb6f10bc4cdc84",
     "hash_algorithm": "sha256",
     "hash_normalization": "canonical-text",
     "contains_mock": false,
     "historical_snapshot": true,
+    "available_at_proven": false,
     "raw_source_id": "run=2026-07-08T18:00:00&node=CONTROLX_1_N001",
     "records_n": 1
   },

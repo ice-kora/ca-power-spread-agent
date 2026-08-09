@@ -9,22 +9,23 @@ build_evidence_demo.py —— 生成 Golden Case E 的真实历史 GFS Evidence 
 保存为 `demo_artifacts/evidence_demo.json`（真实历史快照：contains_mock=false，
 historical_snapshot=true）。
 
-语义
+语义（V0.3.1.4 Final Honesty Patch）
 ----
-  - 18Z init = 2026-07-08 18:00 UTC；BACKTEST 保守可用上界 = init + 6h =
-    2026-07-09 00:00 UTC（晚于 decision_cutoff = 2026-07-08 17:00 UTC）。
-  - available_at **显式写出**（= 保守上界，与 weather_gfs BACKTEST 口径一致）；
-    Time Gate 判 `available_at > decision_cutoff` → NOT ELIGIBLE →
-    AVAILABLE_AFTER_CUTOFF。
+  - 18Z init = 2026-07-08 18:00 UTC，晚于 decision_cutoff = 2026-07-08 17:00 UTC。
+  - **不推算 available_at**（绝不把 init+delay 当真实可用时刻）：该 run 连初始化都发生在
+    cutoff 之后 → Strong Impossibility：available_at 必然更晚 → `INITIALIZATION_AFTER_CUTOFF`；
+    真实 available_at 无法证明 → 保持 `UNKNOWN / NOT PROVEN`（`AVAILABILITY_NOT_PROVEN`）。
   - evidence_demo.json 由 `HistoricalSnapshotEvidenceAdapter` 在 DEMO MODE 加载，
-    注入后仍由 Time Gate 程序裁决，**绝不进入** Risk Gate / Rule Engine / Final。
+    注入后仍由 Time Gate 程序裁决（initialization_time > cutoff → 提前拒绝），
+    **绝不进入** Risk Gate / Rule Engine / Final。
 
 字段（需求四清单）
 ------------------
   evidence_id / source / source_type / forecast_run / initialization_time /
-  published_at / available_at / retrieved_at / target_time / node / region /
+  published_at / available_at（UNKNOWN）/ available_at_source / availability_proven /
+  initialization_after_cutoff / retrieved_at / target_time / node / region /
   event_type / summary / severity / raw_source_id / decision_cutoff /
-  decision_eligible / rejection_reason + decision_date（adapter 匹配用）。
+  decision_eligible / reason_code / rejection_reason + decision_date（adapter 匹配用）。
 
 用法
 ----
@@ -95,8 +96,11 @@ def build_snapshot(verbose: bool = True) -> dict:
         raise SystemExit("底层返回 MOCK 降级，拒绝写入（evidence_demo 必须真实历史，非 MOCK）。")
 
     init = _init_from_raw(ev.get("raw_source_id", ""), f"{DECISION_DATE}T18:00:00")
-    # BACKTEST 保守可用上界 = init + 6h（与 weather_gfs GFS_PUBLISH_LAG_CEILING_H 一致）
-    available_at = (pd.Timestamp(init) + pd.Timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%S")
+    # V0.3.1.4：**不推算 available_at**（绝不把 init+delay 当真实可用时刻）。
+    # 该 18Z run 初始化时刻（18:00 UTC）晚于决策 cutoff（17:00 UTC）→
+    # Strong Impossibility：available_at 必然更晚 → INITIALIZATION_AFTER_CUTOFF；
+    # 真实 available_at 无法证明 → 保持 UNKNOWN（AVAILABILITY_NOT_PROVEN / AVAILABLE_AT_UNKNOWN）。
+    available_at = ""
 
     record = {
         "evidence_id": ev.get("evidence_id", "GFS-18Z-2026-07-08-CONTROLX_1_N001"),
@@ -105,8 +109,11 @@ def build_snapshot(verbose: bool = True) -> dict:
         "source_type": ev.get("source_type", "WEATHER"),
         "forecast_run": CYCLE,
         "initialization_time": init,
-        "published_at": ev.get("published_at", ""),
-        "available_at": available_at,
+        "published_at": ev.get("published_at", ""),        # 真实存在的发布上界（审计保留）
+        "available_at": available_at,                      # UNKNOWN（不伪造）
+        "available_at_source": "NOT_PROVEN",
+        "availability_proven": False,
+        "initialization_after_cutoff": True,
         "retrieved_at": ev.get("retrieved_at", ""),
         "target_time": ev.get("target_time", ""),
         "node": NODE,
@@ -121,24 +128,29 @@ def build_snapshot(verbose: bool = True) -> dict:
         "is_mock": False,
         "historical_snapshot": True,
         "decision_eligible": False,
+        "reason_code": "INITIALIZATION_AFTER_CUTOFF",
         "rejection_reason": (
-            "AVAILABLE_AFTER_CUTOFF（POST_DECISION_EVIDENCE：available_at 晚于 "
-            "decision_cutoff，只进复盘，绝不进入决策）"),
+            "INITIALIZATION_AFTER_CUTOFF（AVAILABLE_AT_UNKNOWN：该 GFS 18Z run 在决策 cutoff "
+            "之后才开始初始化，available_at 必然更晚，因此不可能在 cutoff 前可用；"
+            "其实际可用时间未知，不伪造）"),
     }
     doc = {
         "schema_version": "1.0",
         "generated_by": "build_evidence_demo.py",
         "generated_at": _iso_utc(),
         "source": record["source"],
-        "source_timestamp": available_at,
+        "source_timestamp": init,                          # 该快照对应的历史 run 初始化时刻
         "hash_algorithm": HASH_ALGORITHM,
         "hash_normalization": HASH_NORMALIZATION,
         "contains_mock": False,
         "historical_snapshot": True,
+        "available_at_proven": False,                      # V0.3.1.4：不伪造可用时刻
         "raw_source_id": record["raw_source_id"],
         "note": (
             "真实历史 GFS 18Z forecast snapshot（Open-Meteo Single Runs 历史档案）。"
-            "Demo 使用固定历史快照保证演示可重复；时间门仍按它真实的 available_at 判定。"),
+            "该 run 初始化时刻（18:00 UTC）晚于决策 cutoff（17:00 UTC）→ "
+            "INITIALIZATION_AFTER_CUTOFF；真实 available_at 未知（AVAILABLE_AT_UNKNOWN），"
+            "不伪造可用时刻。Demo 使用固定历史快照保证演示可重复。"),
         "records": [record],
     }
     # artifact_hash = 记录内容 canonical 哈希（跨平台可复现；不含 hash 字段自身）
@@ -148,11 +160,11 @@ def build_snapshot(verbose: bool = True) -> dict:
         print(f"    evidence_id    : {record['evidence_id']}")
         print(f"    forecast_run   : {CYCLE}")
         print(f"    initialization : {init}")
-        print(f"    published_at   : {record['published_at']}")
-        print(f"    available_at   : {available_at}（init+6h 保守上界）")
+        print(f"    published_at   : {record['published_at'] or '—'}")
+        print(f"    available_at   : UNKNOWN / NOT PROVEN（不伪造 init+delay）")
         print(f"    decision_cutoff: {CUTOFF_UTC}")
         print(f"    summary        : {record['summary'][:80]}…")
-        print(f"    → available_at > cutoff → NOT ELIGIBLE → AVAILABLE_AFTER_CUTOFF")
+        print(f"    → init({init}) > cutoff({CUTOFF_UTC}) → NOT ELIGIBLE → INITIALIZATION_AFTER_CUTOFF")
     return doc
 
 
@@ -172,14 +184,18 @@ def main() -> int:
         print(f"[check] artifact_hash 匹配: {'PASS' if h == doc.get('artifact_hash') else 'FAIL'}")
         print(f"[check] contains_mock=false: {'PASS' if not doc.get('contains_mock') else 'FAIL'}")
         print(f"[check] historical_snapshot=true: {'PASS' if doc.get('historical_snapshot') else 'FAIL'}")
-        # Time Gate 语义
+        # Time Gate 语义：initialization_time > cutoff → NOT ELIGIBLE / INITIALIZATION_AFTER_CUTOFF
         from agent.evidence.time_gate import split_eligible  # noqa: PLC0415
         cutoff = rec.get("decision_cutoff") or "2026-07-08T17:00:00"
         elig, post = split_eligible([dict(rec)], cutoff)
         got = [e.get("evidence_id") for e in post]
-        ok = (not elig) and got == [rec["evidence_id"]] and \
-             "AVAILABLE_AFTER_CUTOFF" in (rec.get("rejection_reason") or "")
-        print(f"[check] available_at>{cutoff} → NOT ELIGIBLE / AVAILABLE_AFTER_CUTOFF: {'PASS' if ok else 'FAIL'}")
+        init = str(rec.get("initialization_time") or "")
+        init_after = bool(init) and pd.Timestamp(init) > pd.Timestamp(cutoff)
+        no_fake_avail = not str(rec.get("available_at") or "").strip()   # 不伪造 init+delay
+        ok = (not elig) and got == [rec["evidence_id"]] and init_after and no_fake_avail \
+             and "INITIALIZATION_AFTER_CUTOFF" in (rec.get("reason_code") or "")
+        print(f"[check] available_at UNKNOWN 且 init({init}) > cutoff({cutoff}) → "
+              f"NOT ELIGIBLE / INITIALIZATION_AFTER_CUTOFF: {'PASS' if ok else 'FAIL'}")
         return 0 if ok else 1
 
     doc = build_snapshot()

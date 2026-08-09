@@ -65,7 +65,7 @@ python mvp_web.py --offline
 | ⑤ **ASK** | Ask Trading Agent 面板输入自然语言问题 | LLM 经 6 个 Tool 取事实回答并展示 **Agent Trace**；无 Key 时诚实显示 `LLM NOT CONFIGURED` |
 | ⑥ **BRIEF** | GENERATE DAILY BRIEF | 扫描指定日全部已生成决策，输出 BUY/SELL/NO_TRADE 汇总、Top 机会、Top 风险 |
 
-**Golden Case E（稳定演示 "防信息穿越"）**：DEMO MODE 下选择案例 E（2026-07-08 CONTROLX H2），页面显示一条**真实历史 GFS 18Z 预报快照**（`EVIDENCE MODE: HISTORICAL SNAPSHOT`），明确展示 Forecast Run / Published At / Available At / Decision Cutoff → `Available At 晚于 Cutoff` → `Decision Eligible: NO` → `Reason: AVAILABLE_AFTER_CUTOFF` → `NOT USED`。该证据**不进入** Risk Gate / Rule Engine / 最终建议——交易结果与无证据时完全一致（不穿越、可重复、可现场审计）。
+**Golden Case E（稳定演示 "防信息穿越"）**：DEMO MODE 下选择案例 E（2026-07-08 CONTROLX H2），页面显示一条**真实历史 GFS 18Z 预报快照**（`EVIDENCE MODE: HISTORICAL SNAPSHOT`），明确展示 Forecast Run / Initialization Time / Published At / Available At / Decision Cutoff → `Initialization Time 晚于 Cutoff` → `Decision Eligible: NO` → `Reason: INITIALIZATION_AFTER_CUTOFF` → `NOT USED`。该证据的**真实可用时刻无法证明**（`Available At: UNKNOWN / NOT PROVEN`，不伪造 init+delay），但仅凭初始化晚于截止即可确定不可能参与当时决策。该证据**不进入** Risk Gate / Rule Engine / 最终建议——交易结果与无证据时完全一致（不穿越、可重复、可现场审计）。
 
 ## 4. 每块内容是什么意思（速查表）
 

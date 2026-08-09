@@ -12,7 +12,9 @@ Evidence Time Gate（V0.2 修正核心）：防止 Agent 信息穿越 + MOCK 硬
       ELSE:                                            decision_eligible = FALSE（Post-decision / DEMO MOCK）
 
   available_at 是 Time Gate **唯一**判据（AsOfRecord 的 as-of 时点）；available_at
-  缺失时才回退 published_at（兼容旧证据），绝不使用 initialization_time。
+  缺失 → 不可决策（AVAILABILITY_NOT_PROVEN），**绝不 fallback** published_at /
+  initialization_time。若初始化时刻本身已晚于 cutoff（INITIALIZATION_AFTER_CUTOFF），
+  可用 Strong Impossibility 提前判不可用（不是把 init 当 available_at）。
 
   decision_eligible 一律由本模块程序计算，禁止由 LLM 自行判断。
 
@@ -74,7 +76,7 @@ def is_available_before_cutoff(available_at: Optional[str],
 
     business_contract §4 铁律：任何特征若 `available_at > decision_cutoff`
     （D-1 日 10:00 PT，DAM Market Close / bid cutoff）→ **禁止进入训练/推理**。
-    Evidence 的 available_at（缺失时回退 published_at）即该条证据的可用时刻，
+    Evidence 的 available_at 即该条证据的可用时刻（Time Gate 唯一判据；缺失 → 不可决策），
     本函数与 `Evidence.decision_eligible` 同语义（纯程序计算，禁止 LLM 判断）。
 
     Returns:
@@ -94,13 +96,13 @@ def is_available_before_cutoff(available_at: Optional[str],
 def is_decision_eligible(ev: Evidence, decision_cutoff: Optional[str] = None) -> bool:
     """程序判断单条证据是否可在该决策时点使用。
 
-    R7 硬隔离：is_mock=True 恒为 False，即便 published_at <= decision_cutoff。
+    R7 硬隔离：is_mock=True 恒为 False，即便 available_at <= decision_cutoff。
 
     Args:
         ev: Evidence 对象（或可转 Evidence 的 dict）
         decision_cutoff: 决策截止 ISO 字符串；缺省用 ev.decision_cutoff
     Returns:
-        True 仅当 非 MOCK 且 published_at 非空且 <= decision_cutoff
+        True 仅当 非 MOCK、初始化未晚于 cutoff、且 available_at 非空且 <= decision_cutoff
     """
     if isinstance(ev, dict):
         ev = evidence_from_dict(ev)

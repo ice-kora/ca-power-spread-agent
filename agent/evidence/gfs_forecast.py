@@ -206,6 +206,7 @@ def _aggregate_records(
         published_at=published_at,
         available_at=available_at,
         available_at_source=available_source,
+        initialization_time=model_run_time,
         retrieved_at=retrieved_at,
         target_time=target_time,
         decision_cutoff=decision_cutoff,

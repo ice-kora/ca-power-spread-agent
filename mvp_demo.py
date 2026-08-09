@@ -261,7 +261,9 @@ def render_section4(d) -> None:
         for r in rejected:
             print(f"    · [{r['event_type']}/{r['severity']}] {r['source']}")
             print(f"      summary      : {r['summary']}")
-            print(f"      available_at : {_utc_label(r.get('available_at') or r.get('published_at'))} UTC  |  rejection_reason : {r.get('rejection_reason', '')}")
+            avail_disp = (_utc_label(r.get('available_at')) if r.get('available_at')
+                          else 'UNKNOWN / NOT PROVEN')
+            print(f"      available_at : {avail_disp} UTC  |  rejection_reason : {r.get('rejection_reason', '')}")
     else:
         print()
         print("  ▶ POST-DECISION / NOT USED：（本决策日未获取到晚于 cutoff 的真实证据）")

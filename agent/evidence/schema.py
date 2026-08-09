@@ -93,6 +93,7 @@ EVIDENCE_KEYS: tuple = (
     "published_at",
     "available_at",
     "available_at_source",
+    "initialization_time",
     "retrieved_at",
     "target_time",
     "decision_cutoff",
@@ -201,7 +202,8 @@ class Evidence:
     raw_source_id: str = ""
     published_at: str = ""
     available_at: str = ""
-    available_at_source: str = ""      # 诚实标注 available_at 来源：available_at / published_at（显式迁移）
+    available_at_source: str = ""      # 诚实标注 available_at 来源：available_at / published_at（显式迁移）/ NOT_PROVEN
+    initialization_time: str = ""      # forecast run 初始化时刻（Strong Impossibility：init>cutoff → 必然不可用）
     retrieved_at: str = ""
     target_time: str = ""
     decision_cutoff: str = ""
@@ -216,18 +218,26 @@ class Evidence:
     def time_eligible(self) -> bool:
         """R1/R2 纯时间门槛（程序计算，绝不由 LLM 判断）。
 
-        V0.3.1.3 收口：Time Gate **只判 available_at** <= decision_cutoff。
-        available_at 由 Collector/Adapter 在进入 AsOfRecord/Evidence Schema 时
-        显式填好（若 published_at 即真正可用时刻，须显式写 available_at =
-        published_at）。available_at 缺失 → FALSE（MISSING_AVAILABLE_AT），
-        **绝不 fallback** 到 published_at / initialization_time（宁保守不穿越）。
+        V0.3.1.4 统一判断顺序（**published_at 不参与 eligibility**）：
+          1. is_mock → False（R7 硬隔离，decision_eligible 处处理）
+          2. **initialization_time > decision_cutoff → False（INITIALIZATION_AFTER_CUTOFF）**
+             —— Strong Impossibility Check：该 forecast run 连初始化都发生在 cutoff 之后，
+             其 available_at 必然更晚，因此不可能在 cutoff 前可用。
+             （这不是把 initialization_time 当 available_at，而是用"必然更晚"的逻辑提前拒绝。）
+          3. available_at 缺失 → False（AVAILABILITY_NOT_PROVEN / 无已证可用时刻）
+          4. available_at > decision_cutoff → False（AVAILABLE_AFTER_CUTOFF）
+          5. 否则 → True
         """
         cutoff = parse_timestamp(self.decision_cutoff)
         if cutoff is None:
             return False
+        # Strong Impossibility Check：初始化本身已晚于 cutoff → available_at 必然更晚
+        init = parse_timestamp(self.initialization_time)
+        if init is not None and init > cutoff:
+            return False            # INITIALIZATION_AFTER_CUTOFF
         avail = parse_timestamp(self.available_at)
         if avail is None:
-            return False            # MISSING_AVAILABLE_AT：无已证可用时刻
+            return False            # AVAILABILITY_NOT_PROVEN：无已证可用时刻
         try:
             return avail <= cutoff
         except Exception:
@@ -284,6 +294,7 @@ class Evidence:
         self.published_at = _coerce_str(self.published_at)
         self.available_at = _coerce_str(self.available_at)
         self.available_at_source = _coerce_str(self.available_at_source)
+        self.initialization_time = _coerce_str(self.initialization_time)
         self.retrieved_at = _coerce_str(self.retrieved_at)
         # V0.3.1.3 available-at-only 收口：Time Gate 只判 available_at。
         # Schema 入口（Adapter/工厂）负责填 available_at：若 published_at 即真正
@@ -331,6 +342,7 @@ class Evidence:
             "published_at": self.published_at,
             "available_at": self.available_at,
             "available_at_source": self.available_at_source,
+            "initialization_time": self.initialization_time,
             "retrieved_at": self.retrieved_at,
             "target_time": self.target_time,
             "decision_cutoff": self.decision_cutoff,
@@ -409,6 +421,8 @@ def evidence_from_dict(raw: Dict[str, Any]) -> Evidence:
         raw_source_id=raw.get("raw_source_id", ""),
         published_at=raw.get("published_at", ""),
         available_at=raw.get("available_at", ""),
+        available_at_source=raw.get("available_at_source", ""),
+        initialization_time=raw.get("initialization_time", ""),
         retrieved_at=raw.get("retrieved_at", ""),
         target_time=raw.get("target_time", ""),
         decision_cutoff=raw.get("decision_cutoff", ""),

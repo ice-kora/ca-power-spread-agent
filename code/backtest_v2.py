@@ -58,6 +58,25 @@ except Exception:
     CURRENT_MARKET_RULE_VERSION = "PRE_DAME_EDAM_2026"
     HAVE_MARKET_RULE = False
 
+
+def _window_market_rule_version() -> dict:
+    """按回测窗口计算市场规则版本 metadata（V0.3.1.4；**只改 metadata，不改回测逻辑**）。
+
+    test window（2026-06-02 ~ 2026-08-05）整体在 2026-05-01 后 → POST_DAME_EDAM_2026；
+    若未来窗口跨 2026-05-01 边界 → MIXED + market_rule_versions_used。
+    """
+    try:
+        from code.market_rules import market_rule_version_for  # noqa: PLC0415
+        start = pd.Timestamp("2026-06-02")
+        end = pd.Timestamp("2026-08-05")
+        vs = {market_rule_version_for(start), market_rule_version_for(end)}
+        if len(vs) == 1:
+            return {"market_rule_version": vs.pop()}
+        return {"market_rule_version": "MIXED",
+                "market_rule_versions_used": sorted(vs)}
+    except Exception:  # noqa: BLE001
+        return {"market_rule_version": CURRENT_MARKET_RULE_VERSION}
+
 # ---------------------------------------------------------------------------
 # Agent C 模块集成（V0.2 正式组件；未就绪时回退本文件内置复刻）
 # ---------------------------------------------------------------------------
@@ -602,7 +621,7 @@ def main():
             "gate_source": "Agent C code/risk_gate/（正式模块，集成；stage3 train+val 校准，test 零调参）; 内置复刻保留作回归对照",
             "rule_engine_source": "Agent C code/decision/rule_engine.py（正式模块，集成，DecisionPipeline.md §5 三态 + Evidence Time Gate）; 内置复刻保留作回归对照",
             "agent_c_integrated": HAVE_AGENT_C,
-            "market_rule_version": CURRENT_MARKET_RULE_VERSION,
+            **_window_market_rule_version(),   # V0.3.1.4：test window 2026-05-01+ → POST（MIXED 守卫）
             "regression_alignment": align,
         },
         "strategy_matrix_main": main_rows,

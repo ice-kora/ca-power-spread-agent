@@ -447,26 +447,35 @@ function renderS4() {
   } else {
     html += `<div class="empty">NO ELIGIBLE EXTERNAL EVIDENCE —— 决策时点（10:00 PT）前无可用真实外部证据。<br>不编造证据：宁可未知，不可乱判方向。</div>`;
   }
-  html += `<div style="height:10px"></div><div class="sub" style="font-weight:600">▶ POST-DECISION / REJECTED（available_at 晚于 cutoff 或不可证 → 只进复盘，绝不进入决策）</div>`;
+  html += `<div style="height:10px"></div><div class="sub" style="font-weight:600">▶ POST-DECISION / REJECTED（初始化晚于 cutoff 或可用性不可证 → 只进复盘，绝不进入决策）</div>`;
   if (rej.length) {
     html += `<div class="ev-list">` + rej.map(e => {
-      const avail = e.available_at || "—";
+      const init = e.initialization_time || "—";
+      const avail = e.available_at || "UNKNOWN / NOT PROVEN";
       const cut = e.decision_cutoff || "—";
-      const afterCutoff = e.available_at && e.decision_cutoff
+      const reason = e.rejection_reason || "被 Evidence Time Gate 隔离";
+      const initAfter = e.initialization_time && e.decision_cutoff
+        && new Date(e.initialization_time) > new Date(e.decision_cutoff);
+      const availAfter = e.available_at && e.decision_cutoff
         && new Date(e.available_at) > new Date(e.decision_cutoff);
-      const bizNote = afterCutoff
-        ? "业务解释：该证据虽然与目标时段有关，但在报价截止之后才可获得，因此没有参与当时的交易判断。"
-        : (e.available_at
-          ? "业务解释：该证据未通过 Evidence Time Gate，未参与当时的交易判断。"
-          : "业务解释：该证据无已证可用时刻（MISSING_AVAILABLE_AT），未参与当时的交易判断。");
+      let bizNote;
+      if (initAfter) {
+        bizNote = "业务解释：该 GFS run 在交易截止时间之后才开始初始化，因此无论其最终何时发布，都不可能在当时的交易决策中被使用。";
+      } else if (availAfter) {
+        bizNote = "业务解释：该证据虽然与目标时段有关，但在报价截止之后才可获得，因此没有参与当时的交易判断。";
+      } else if (!e.available_at) {
+        bizNote = "业务解释：该证据无已证可用时刻（AVAILABILITY_NOT_PROVEN），未参与当时的交易判断。";
+      } else {
+        bizNote = "业务解释：该证据未通过 Evidence Time Gate，未参与当时的交易判断。";
+      }
       return `<div class="ev-item bad">
         <div class="head"><span class="src">[${esc(e.event_type)}/${esc(e.severity)}] ${esc(e.source)}</span>
           ${e.is_mock ? '<span class="tag-soft rej">MOCK</span>' : ""}
           <span class="tag-soft rej">NOT USED</span></div>
         <div class="summary">${esc(e.summary)}</div>
-        <div class="meta">Forecast Run / Init Time: ${esc(e.initialization_time || "—")} · Published At: ${esc(e.published_at || "—")} · Retrieved At: ${esc(e.retrieved_at || "—")}</div>
+        <div class="meta">Forecast Run / Initialization Time: <b>${esc(init)}</b> · Published At: ${esc(e.published_at || "—")} · Retrieved At: ${esc(e.retrieved_at || "—")}</div>
         <div class="meta">Available At: <b>${esc(avail)}</b> · Decision Cutoff: <b>${esc(cut)}</b></div>
-        <div class="meta">Decision Eligible: <b>NO</b> · Reason: <b>${esc(e.rejection_reason || "被 Evidence Time Gate 隔离")}</b></div>
+        <div class="meta">Decision Eligible: <b>NO</b> · Reason: <b>${esc(reason)}</b></div>
         <div class="muted" style="font-size:12px;margin-top:4px">${esc(bizNote)}</div>
       </div>`;
     }).join("") + `</div>`;

@@ -5,8 +5,8 @@
   "hash_normalization": "canonical-text",
   "description": "真实历史数据的最小切片，只覆盖 5 个 Golden Cases 决策所需行 + 特征前置窗口。不造数据、不改 PnL/prediction/decision。",
   "generated_by": "build_demo_artifacts.py",
-  "generated_at": "2026-08-09T10:42:49Z",
-  "source_commit": "3ed9598e57a8971b46f9d38ceb3274d3110d046a",
+  "generated_at": "2026-08-09T11:19:16Z",
+  "source_commit": "2fbaa171810587784ec7ca506a014988f17f0492",
   "golden_cases": [
     {
       "id": "B",
@@ -79,7 +79,7 @@
     "predictions_demo.csv": "a8c95c648586d034eb4f15e5f5a81ac98172e085e5dc331dd4ba9ed753dea4c8",
     "risk_features_demo.parquet": "c0950548c866c18871eda1724a385c987ab862df3aec8d8592218fea6251e873",
     "cases_demo.json": "3c4b9f5585a9a6dcfbb26bc7524edd6917b4ddd6db940fb057b4edaf4960fcd6",
-    "evidence_demo.json": "f5646995e6285166e18e4f2e52e160144c65bf84a3c9aad97c7a811765b44c4e"
+    "evidence_demo.json": "45894d5fb17c37a2afba7065642e606e51438c35fc0a6f2750b440c662273cb2"
   },
   "row_counts": {
     "canonical_demo": 4942,

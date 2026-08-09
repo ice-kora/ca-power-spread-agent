@@ -609,8 +609,11 @@ class HistoricalSnapshotEvidenceAdapter(EvidenceAdapter):
     从 `demo_artifacts/evidence_demo.json` 加载**真实历史 GFS Evidence Snapshot**
     （可重复、不依赖现场网络、时间戳固定、contains_mock=false）。仅当 decision_date
     匹配快照的 decision_date 时注入证据（其它 Golden Case 展示不受干扰）；注入后仍由
-    Time Gate 按本次决策 cutoff 程序裁决（available_at 晚于 cutoff → rejected /
-    AVAILABLE_AFTER_CUTOFF）。证据不进入 Risk Gate / Rule Engine / Model / Final。
+    Time Gate 按本次决策 cutoff 程序裁决（initialization_time > cutoff →
+    INITIALIZATION_AFTER_CUTOFF；或 available_at 缺失 → AVAILABILITY_NOT_PROVEN）。
+    **Adapter 只做字段映射 / schema normalization / provenance 传递，绝不推算
+    available_at**（不把 init+delay 当真实可用时刻，需求 V0.3.1.4）。证据不进入
+    Risk Gate / Rule Engine / Model / Final。
     """
 
     def __init__(self, snapshot_path: Optional[os.PathLike] = None):
@@ -706,6 +709,7 @@ def _ev_row(ev: Dict[str, Any]) -> Dict[str, Any]:
         "initialization_time": ev.get("initialization_time", "") or ev.get("model_run_time", ""),
         "published_at": pub,
         "available_at": avail,                            # Time Gate 真正用的 available_at
+        "availability_proven": bool(avail),               # V0.3.1.4：是否有真实可证 available_at
         "available_at_source": str(ev.get("available_at_source")
                                    or ("MISSING" if not avail else "available_at")),
         "retrieved_at": ev.get("retrieved_at", ""),
@@ -716,26 +720,46 @@ def _ev_row(ev: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _naive_ts(value: str):
+    """解析为 naive pd.Timestamp；失败返回 None。"""
+    try:
+        ts = pd.Timestamp(str(value).strip())
+        return ts.tz_localize(None) if ts.tz is not None else ts
+    except Exception:
+        return None
+
+
 def _rejection_reason(row: Dict[str, Any]) -> str:
     """被隔离证据的拒绝原因（程序计算，非交易逻辑）。
 
-    判据 = Time Gate 真正用的 available_at（= row 已展示的 available_at），
-    保证"显示 16:00 / cutoff 17:00"与拒绝原因绝不矛盾。
+    V0.3.1.4 统一判断顺序（**published_at 不参与 eligibility**）：
+      1. is_mock → MOCK_DATA_NOT_ELIGIBLE
+      2. initialization_time > decision_cutoff → INITIALIZATION_AFTER_CUTOFF
+         （Strong Impossibility：该 run 连初始化都发生在 cutoff 后，available_at 必然
+         更晚，不可能在 cutoff 前可用 —— 不是把 init 当 available_at）
+      3. available_at 缺失 → AVAILABILITY_NOT_PROVEN
+      4. available_at > decision_cutoff → AVAILABLE_AFTER_CUTOFF
+      5. 否则 → NOT_DECISION_ELIGIBLE
     """
     if row.get("is_mock"):
         return "MOCK_DATA_NOT_ELIGIBLE（is_mock=True，仅测试/演示，R7 硬隔离）"
+    cutoff = str(row.get("decision_cutoff") or "").strip()
+    # Strong Impossibility Check：初始化晚于 cutoff → available_at 必然更晚
+    init = str(row.get("initialization_time") or "").strip()
+    if init:
+        init_ts = _naive_ts(init)
+        cut_ts = _naive_ts(cutoff)
+        if init_ts is not None and cut_ts is not None and init_ts > cut_ts:
+            return ("INITIALIZATION_AFTER_CUTOFF（AVAILABLE_AT_UNKNOWN：该 forecast run "
+                    "在决策 cutoff 之后才开始初始化，available_at 必然更晚，因此不可能在 "
+                    "cutoff 前可用；其实际可用时间未知，不伪造）")
     avail = str(row.get("available_at") or "").strip()
     if not avail:
-        return "MISSING_AVAILABLE_AT（可用时刻缺失，宁保守不穿越）"
-    cutoff = str(row.get("decision_cutoff") or "").strip()
-    try:
-        avail_ts = pd.Timestamp(avail)
-        cut_ts = pd.Timestamp(cutoff)
-        if avail_ts.tz is not None:
-            avail_ts = avail_ts.tz_localize(None)
-        if cut_ts.tz is not None:
-            cut_ts = cut_ts.tz_localize(None)
-    except Exception:
+        return ("AVAILABILITY_NOT_PROVEN（available_at 缺失 / 无已证可用时刻，"
+                "无法证明在 cutoff 前可用，宁保守不穿越）")
+    avail_ts = _naive_ts(avail)
+    cut_ts = _naive_ts(cutoff)
+    if avail_ts is None or cut_ts is None:
         return "UNPARSEABLE_TIME（时间不可解析）"
     if avail_ts > cut_ts:
         return ("AVAILABLE_AFTER_CUTOFF（POST_DECISION_EVIDENCE："
