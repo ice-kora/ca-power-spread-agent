@@ -174,7 +174,8 @@ class V0315InvariantTests(unittest.TestCase):
         html = (REPO_ROOT / "templates" / "mvp_index.html").read_text(encoding="utf-8")
         self.assertNotIn("e.available_at || e.published_at", html)
         self.assertIn("UNKNOWN / NOT PROVEN", html)
-        self.assertIn("Published At Estimate", html)
+        self.assertIn("发布时刻(估算)", html)      # Published At Estimate 中文化
+        self.assertIn("Published At", html)
         # LLM Tool：get_evidence 返回 available_at 不 fallback（Case E 为空）
         svc = make_demo_svc()
         d = svc.run_decision(DD, NODE, HOUR)

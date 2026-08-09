@@ -303,9 +303,9 @@ class V0313PolishTests(unittest.TestCase):
         self.assertIn(meta["data_mode"], (MODE_FULL, MODE_DEMO))
         self.assertIn(meta["evidence_mode_default"], ("HISTORICAL_SNAPSHOT", "LIVE"))
         page = c.get("/").get_data(as_text=True)
-        # 状态栏包含 DATA MODE 与 EVIDENCE MODE（renderMvpStatus）
-        self.assertIn('"DATA MODE"', page)
-        self.assertIn('"EVIDENCE MODE"', page)
+        # 状态栏包含数据模式与证据模式（renderMvpStatus；中英双语标签）
+        self.assertIn("DATA MODE", page)
+        self.assertIn("EVIDENCE MODE", page)
         # 决策上下文 S1 显示 evidence_mode（HISTORICAL_SNAPSHOT / LIVE / NONE）
         r = c.post("/api/decision", json={"decision_date": DD, "node": NODE,
                                           "hour": HOUR, "evidence": "offline"})

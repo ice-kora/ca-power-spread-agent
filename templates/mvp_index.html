@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CAISO Trading Decision Agent MVP · Demo Freeze（V0.3.1.2）</title>
+<title>CAISO Trading Decision Agent（CAISO 价差交易决策助手）· Demo Freeze V0.3.1.2</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='mvp.css') }}">
 </head>
 <body>
@@ -14,57 +14,57 @@
     <div>
       <h1>CAISO Trading Decision Agent <span class="tag">MVP · Demo Freeze Build（V0.3.1.2）</span></h1>
       <div class="sub">
-        Model → Evidence → Time Gate → Case → Risk Gate → Rule Engine → <b>BUY / SELL / NO_TRADE</b> → Human → Lock → Reveal → PnL → Review
-        &nbsp;·&nbsp; Return = DA − RTPD（$/MWh）
+        模型(Model) → 证据(Evidence) → 时间门(Time Gate) → 案例(Case) → 风控(Risk Gate) → 规则引擎(Rule Engine) → <b>BUY / SELL / NO_TRADE</b> → 人工 → 锁定(Lock) → 揭晓(Reveal) → PnL → 复盘(Review)
+        &nbsp;·&nbsp; 价差 Return = DA − RTPD（$/MWh）
       </div>
     </div>
     <div class="nav">
       <span class="badge" id="llm-badge">LLM …</span>
       <span class="badge" id="status-badge">决策状态: —</span>
-      <a href="/data-sources">Data Sources</a>
-      <a href="/how-it-works">How It Works</a>
+      <a href="/data-sources">数据来源 Data Sources</a>
+      <a href="/how-it-works">工作原理 How It Works</a>
     </div>
   </header>
 
   <!-- ============ MVP Status（诚实状态栏 · 不误导业务方） ============ -->
   <div class="card mvp-status" id="mvp-status">
-    <h2><span class="sec">MVP STATUS</span> <span class="hint">诚实状态栏 · 不误导业务方</span></h2>
+    <h2><span class="sec">MVP 状态</span> <span class="hint">诚实状态栏 · 不误导业务方</span></h2>
     <div class="status-grid" id="mvp-status-grid"><div class="empty">加载中…</div></div>
   </div>
 
   <!-- ============ Cutoff banner ============ -->
   <div class="notice" id="banner">
-    <span class="tag">AS-OF</span>
-    <p><b>ONLY INFORMATION AVAILABLE BEFORE DECISION CUTOFF IS USED.</b>
-      决策日 D 的 10:00 PT（DAM bid cutoff）之后产生的任何信息（实际价格 / 晚报证据）都不得进入决策。
+    <span class="tag">AS-OF 时点</span>
+    <p><b>仅使用决策截止（Decision Cutoff）前可获得的信息（ONLY INFORMATION AVAILABLE BEFORE CUTOFF IS USED）。</b>
+      决策日 D 的 10:00 PT（DAM 报价截止 bid cutoff）之后产生的任何信息（实际价格 / 晚报证据）都不得进入决策。
       Evidence 与 Case 均经程序化时间门槛（Evidence Time Gate / as-of）强制隔离；<b>不穿越、不编造。</b></p>
   </div>
 
   <!-- ============ Controls ============ -->
   <div class="controls">
     <div class="field">
-      <label>DECISION DATE（D，目标日=D+1）</label>
+      <label>决策日期 DECISION DATE（D，目标日=D+1）</label>
       <input type="date" id="inp-date">
     </div>
     <div class="field">
-      <label>NODE</label>
+      <label>节点 NODE</label>
       <select id="inp-node"></select>
     </div>
     <div class="field">
-      <label>TARGET HOUR</label>
+      <label>目标小时 TARGET HOUR</label>
       <select id="inp-hour"></select>
     </div>
     <div class="field">
-      <label>GOLDEN DEMO CASES</label>
+      <label>黄金演示案例 GOLDEN DEMO CASES</label>
       <select id="inp-case">
         <option value="">— 自选参数 —</option>
       </select>
     </div>
     <div class="field">
-      <label>EVIDENCE</label>
+      <label>证据模式 EVIDENCE</label>
       <select id="inp-evidence"></select>
     </div>
-    <button class="btn" id="btn-run" onclick="runDecision()">RUN DECISION</button>
+    <button class="btn" id="btn-run" onclick="runDecision()">运行决策 RUN DECISION</button>
   </div>
 
   <div id="error-box"></div>
@@ -75,8 +75,8 @@
     <aside>
       <!-- Ask Trading Agent -->
       <div class="card" id="ask-card">
-        <h2><span class="sec">ASK</span> Trading Agent <span class="hint">LLM Copilot + 6 个 Tool</span></h2>
-        <div class="sub">自然语言追问决策；展示 Agent Trace（Question → Tool → Args → Result → Answer）。无 Key 诚实提示 LLM NOT CONFIGURED，不影响交易流程。</div>
+        <h2><span class="sec">提问</span> Trading Agent <span class="hint">LLM Copilot + 6 个 Tool</span></h2>
+        <div class="sub">用自然语言追问决策；展示 Agent Trace（问题 → 工具 → 参数 → 结果 → 回答）。无 Key 时诚实提示 LLM NOT CONFIGURED，不影响交易流程。</div>
         <div class="ask-input">
           <input type="text" id="inp-question" placeholder="例如：为什么建议 SELL？"
                  onkeydown="if(event.key==='Enter')ask()">
@@ -88,8 +88,8 @@
 
       <!-- Daily Brief -->
       <div class="card" id="brief-card">
-        <h2><span class="sec">BRIEF</span> Generate Daily Brief</h2>
-        <div class="sub">扫描已生成决策，汇总当日候选 / BUY / SELL / NO_TRADE / RiskGate 拒绝 / Top 机会 / Top 风险。</div>
+        <h2><span class="sec">日报</span> 生成日报 Generate Daily Brief</h2>
+        <div class="sub">扫描已生成决策，汇总当日候选 / BUY / SELL / NO_TRADE / 风控拒绝 / 最佳机会 / 主要风险。</div>
         <div class="ask-input" style="margin-top:6px">
           <input type="date" id="inp-brief-date" style="min-width:0; flex:1">
           <button class="btn secondary small" onclick="generateBrief()">BRIEF</button>
@@ -133,9 +133,9 @@ function showError(err) {
   if (err instanceof Error) {
     msg = err.message; code = err.code || ""; action = err.action || ""; detail = err.detail || "";
   }
-  const codeHtml = code ? `<div class="err-code">ERROR CODE: ${esc(code)}</div>` : "";
-  const actionHtml = action ? `<div class="err-action"><b>Suggested action:</b> ${esc(action)}</div>` : "";
-  const detailHtml = detail ? `<div class="err-detail muted">detail: ${esc(detail)}</div>` : "";
+  const codeHtml = code ? `<div class="err-code">错误码 ERROR CODE: ${esc(code)}</div>` : "";
+  const actionHtml = action ? `<div class="err-action"><b>建议操作 Suggested action:</b> ${esc(action)}</div>` : "";
+  const detailHtml = detail ? `<div class="err-detail muted">详情 detail: ${esc(detail)}</div>` : "";
   $("error-box").innerHTML = `<div class="notice err" style="margin-bottom:12px"><span class="tag">ERROR</span><div>${codeHtml}<p><b>${esc(msg)}</b></p>${actionHtml}${detailHtml}</div></div>`;
 }
 function clearError() { $("error-box").innerHTML = ""; }
@@ -180,13 +180,13 @@ function renderMvpStatus(meta) {
     ? "NONE"
     : (meta.evidence_mode_default || "LIVE");
   const items = [
-    ["MODEL ALPHA", s.model_alpha || "—", (s.model_alpha || "") === "WEAK" ? "warn" : ""],
-    ["PROFITABILITY VERIFIED", s.profitability_verified || "NO", (s.profitability_verified || "") === "YES" ? "ok" : "no"],
-    ["DATA MODE", s.data_mode || "DEMO", (s.data_mode || "") === "FULL" ? "ok" : "warn"],
-    ["EVIDENCE MODE", em, em === "HISTORICAL_SNAPSHOT" ? "ok" : (em === "LIVE" ? "" : "warn")],
+    ["模型信号 MODEL ALPHA", s.model_alpha || "—", (s.model_alpha || "") === "WEAK" ? "warn" : ""],
+    ["盈利已验证 PROFITABILITY", s.profitability_verified || "NO", (s.profitability_verified || "") === "YES" ? "ok" : "no"],
+    ["数据模式 DATA MODE", s.data_mode || "DEMO", (s.data_mode || "") === "FULL" ? "ok" : "warn"],
+    ["证据模式 EVIDENCE MODE", em, em === "HISTORICAL_SNAPSHOT" ? "ok" : (em === "LIVE" ? "" : "warn")],
     ["LLM", s.llm || "NOT CONFIGURED", (s.llm || "") === "CONNECTED" ? "ok" : "warn"],
-    ["AUTO TRADING", s.auto_trading || "DISABLED", (s.auto_trading || "") === "ENABLED" ? "no" : "warn"],
-    ["SETTLEMENT", s.settlement || "SIMPLIFIED SIGNAL BACKTEST", ""]
+    ["自动交易 AUTO TRADING", s.auto_trading || "DISABLED", (s.auto_trading || "") === "ENABLED" ? "no" : "warn"],
+    ["结算范围 SETTLEMENT", s.settlement || "SIMPLIFIED SIGNAL BACKTEST", ""]
   ];
   const grid = $("mvp-status-grid");
   if (!grid) return;
@@ -290,9 +290,9 @@ function renderWarnings() {
   const w = state.decision.warnings || [];
   if (!w.length) return "";
   return w.map(x => `<div class="notice warn" style="margin-bottom:12px"><span class="tag">WARN</span><div>
-    <div class="err-code">ERROR CODE: ${esc(x.code || "")}</div>
+    <div class="err-code">错误码 ERROR CODE: ${esc(x.code || "")}</div>
     <p><b>${esc(x.message || "")}</b></p>
-    <div class="err-action"><b>Suggested action:</b> ${esc(x.suggested_action || "")}</div>
+    <div class="err-action"><b>建议操作 Suggested action:</b> ${esc(x.suggested_action || "")}</div>
   </div></div>`).join("");
 }
 
@@ -321,36 +321,36 @@ function renderS1() {
   const c = state.decision.context, m = state.meta;
   const prov = c.evidence_provenance || {};
   const items = [
-    ["Decision Date", c.decision_date],
-    ["Decision Cutoff", `${c.decision_cutoff_pt}（${m.cutoff_desc}）`],
-    ["Cutoff (UTC)", c.decision_cutoff_utc],
-    ["Target Date", c.target_date],
-    ["Target Hour", "H" + c.hour],
-    ["Node", `${c.node}`],
-    ["Zone", c.zone],
-    ["Data Mode", m.data_mode || (m.mvp_status || {}).data_mode || "—"],
-    ["Market Rule Version", esc(c.market_rule_version || "—"), "date-aware：DecisionSnapshot.context（非全局固定值）"],
-    ["Evidence Mode", evModeLabel(c.evidence_mode || m.evidence_mode_default)],
-    ["Evidence Source", esc(prov.source || "—")],
-    ["Historical Snapshot", prov.historical_snapshot ? `TRUE（contains_mock=${prov.contains_mock === false ? "false" : "?"}，hash=${esc((prov.artifact_hash || "").slice(0, 12))}…）` : "—"],
-    ["Model Version", m.versions.model],
-    ["Risk Gate Version", m.versions.risk_gate],
-    ["Rule Engine Version", m.versions.rule_engine],
-    ["Decision Status", state.locked ? '<span class="pill LOCKED">LOCKED</span>' : '<span class="pill UNLOCKED">UNLOCKED</span>'],
-    ["Decision ID", `<code>${esc(state.decision_id)}</code>`]
+    ["决策日期 Decision Date", c.decision_date],
+    ["决策截止 Decision Cutoff", `${c.decision_cutoff_pt}（${m.cutoff_desc}）`],
+    ["截止(UTC) Cutoff (UTC)", c.decision_cutoff_utc],
+    ["目标日期 Target Date", c.target_date],
+    ["目标小时 Target Hour", "H" + c.hour],
+    ["节点 Node", `${c.node}`],
+    ["区域 Zone", c.zone],
+    ["数据模式 Data Mode", m.data_mode || (m.mvp_status || {}).data_mode || "—"],
+    ["市场规则版本 Market Rule Version", esc(c.market_rule_version || "—"), "date-aware：按目标日自动判定（2026-05-01 边界），来自 DecisionSnapshot.context（非全局固定值）"],
+    ["证据模式 Evidence Mode", evModeLabel(c.evidence_mode || m.evidence_mode_default)],
+    ["证据来源 Evidence Source", esc(prov.source || "—")],
+    ["历史快照 Historical Snapshot", prov.historical_snapshot ? `是（contains_mock=${prov.contains_mock === false ? "false" : "?"}，hash=${esc((prov.artifact_hash || "").slice(0, 12))}…）` : "—"],
+    ["模型版本 Model Version", m.versions.model],
+    ["风控版本 Risk Gate Version", m.versions.risk_gate],
+    ["规则引擎版本 Rule Engine Version", m.versions.rule_engine],
+    ["决策状态 Decision Status", state.locked ? '<span class="pill LOCKED">LOCKED</span>' : '<span class="pill UNLOCKED">UNLOCKED</span>'],
+    ["决策 ID Decision ID", `<code>${esc(state.decision_id)}</code>`]
   ];
   const grid = items.map(([k, v, hint]) => `<div class="item"><div class="k">${esc(k)}</div><div class="v">${v}${hint ? `<div class="muted" style="font-size:11.5px">${esc(hint)}</div>` : ""}</div></div>`).join("");
-  return section("S1", "Decision Context（决策上下文）", "Available information only as of 10:00 PT",
+  return section("S1", "决策上下文（Decision Context）", "仅使用 10:00 PT 前可获得的信息",
     `<div class="kv">${grid}</div>
      <div class="notice" style="margin-top:12px"><span class="tag">约束</span>
-       <p><b>ONLY INFORMATION AVAILABLE BEFORE DECISION CUTOFF IS USED.</b>
-       实际价格（actual_*）在 LOCK 之前不会显示；Post-trade 揭晓只用于复盘，绝不回灌决策。</p></div>`);
+       <p><b>仅使用决策截止前可获得的信息（ONLY INFORMATION AVAILABLE BEFORE CUTOFF IS USED）。</b>
+       实际价格（actual_*）在锁定（LOCK）之前不会显示；事后揭晓（Post-trade）只用于复盘，绝不回灌决策。</p></div>`);
 }
 
 /* ---- Section 2: Data & Provenance ---- */
 function renderS2() {
   const feats = state.decision.top_features || [];
-  if (!feats.length) return section("S2", "Data & Provenance（数据与来源）", "", "");
+  if (!feats.length) return section("S2", "数据与来源（Data & Provenance）", "", "");
   const rows = feats.map((f, i) => `
     <tr class="clickable" onclick="toggleProv(${i})">
       <td><code>${esc(f.feature)}</code></td>
@@ -377,12 +377,12 @@ function renderS2() {
         <b>decision_eligible：</b>${f.decision_eligible ? "YES" : "NO"}
       </div>
     </td></tr>`).join("");
-  const note = "决策相关 Top 特征（as-of）。availability 口径：displayed available_at == Time Gate 判定口径；无精确发布时刻的滞后/历史特征以 ≤ decision_date 00:00 PT 的最晚可证上界表达。";
-  return section("S2", "Data & Provenance（数据与来源）", "Top 特征 · 全部真实 as-of，无 MOCK",
+  const note = "决策相关 Top 特征（as-of）。可用性口径：页面展示的 available_at == Time Gate 判定口径；无精确发布时刻的滞后/历史特征以 ≤ decision_date 00:00 PT 的最晚可证上界表达。";
+  return section("S2", "数据与来源（Data & Provenance）", "Top 特征 · 全部真实 as-of，无 MOCK",
     `<div class="sub">${esc(note)} 点击行可展开"查看数据来源"。</div>
      <div style="overflow-x:auto"><table class="tbl"><thead><tr>
-       <th>Feature</th><th>Value</th><th>Source</th><th>Source Type</th><th>Target Time(UTC)</th>
-       <th>Available At(PT)</th><th>Avail. Basis</th><th>Decision Eligible</th><th>Backtest</th><th>Is Mock</th><th></th>
+       <th>特征 Feature</th><th>值 Value</th><th>来源 Source</th><th>来源类型 Source Type</th><th>目标时间 Target Time(UTC)</th>
+       <th>可用时刻 Available At(PT)</th><th>可用性依据 Avail. Basis</th><th>决策可用 Decision Eligible</th><th>回测 Backtest</th><th>是否MOCK Is Mock</th><th></th>
      </tr></thead><tbody>${rows}</tbody></table></div>`);
 }
 function toggleProv(i) {
@@ -395,7 +395,7 @@ function renderS3() {
   const mo = state.decision.model_output || {};
   const has = mo.expected_return !== undefined && mo.expected_return !== null;
   if (!has) {
-    return section("S3", "Predictive Model（预测模型 · EXPERIMENTAL）", mo.model_version || "",
+    return section("S3", "预测模型（Predictive Model · EXPERIMENTAL）", mo.model_version || "",
       `<div class="notice info"><span class="tag">INFO</span><p>${esc(mo.note || "该行无模型预测（不在 test 窗口）→ 决策按数据缺失处理。")}</p></div>`);
   }
   const contrib = (state.decision.top_features || []).filter(f => f.z !== null && f.z !== undefined);
@@ -422,7 +422,7 @@ function renderS3() {
   } else {
     contribHtml += `<div class="empty">无足够历史样本计算特征统计贡献</div>`;
   }
-  return section("S3", "Predictive Model（预测模型 · EXPERIMENTAL）", mo.model_version || "",
+  return section("S3", "预测模型（Predictive Model · EXPERIMENTAL）", mo.model_version || "",
     `<div class="kv">${kv}</div><div style="height:10px"></div>${contribHtml}
      <div class="notice info" style="margin-top:10px"><span class="tag">诚实</span>
        <p>MODEL SIGNAL IS EXPERIMENTAL / CURRENT ALPHA = ${esc(state.meta.alpha_label)} / MVP ≠ 已验证盈利系统。</p></div>`);
@@ -434,7 +434,7 @@ function renderS4() {
   const elig = ev.eligible || [];
   const rej = ev.rejected || ev.post_decision || [];
   let html = `<div class="sub">${esc(ev.gate_note || "")}</div>`;
-  html += `<div class="sub" style="font-weight:600">▶ Pre-decision / ELIGIBLE（真实证据，进入决策）</div>`;
+  html += `<div class="sub" style="font-weight:600">▶ 决策前 / 可用（Pre-decision / ELIGIBLE，进入决策）</div>`;
   if (elig.length) {
     html += `<div class="ev-list">` + elig.map(e => `
       <div class="ev-item good">
@@ -442,12 +442,12 @@ function renderS4() {
           <span class="tag-soft">${esc(e.directional_effect || "UNCERTAIN")}</span>
           ${e.is_mock ? '<span class="tag-soft rej">MOCK</span>' : ""}</div>
         <div class="summary">${esc(e.summary)}</div>
-        <div class="meta">published_at (Estimate): ${esc(e.published_at || "—")} · available_at: ${esc(e.available_at || "—")} · cutoff: ${esc(e.decision_cutoff || "—")}</div>
+        <div class="meta">发布时刻(估算) published_at: ${esc(e.published_at || "—")} · 可用时刻 available_at: ${esc(e.available_at || "—")} · 截止 cutoff: ${esc(e.decision_cutoff || "—")}</div>
       </div>`).join("") + `</div>`;
   } else {
-    html += `<div class="empty">NO ELIGIBLE EXTERNAL EVIDENCE —— 决策时点（10:00 PT）前无可用真实外部证据。<br>不编造证据：宁可未知，不可乱判方向。</div>`;
+    html += `<div class="empty">无可用外部证据（NO ELIGIBLE EXTERNAL EVIDENCE）—— 决策时点（10:00 PT）前无可用真实外部证据。<br>不编造证据：宁可未知，不可乱判方向。</div>`;
   }
-  html += `<div style="height:10px"></div><div class="sub" style="font-weight:600">▶ POST-DECISION / REJECTED（初始化晚于 cutoff 或可用性不可证 → 只进复盘，绝不进入决策）</div>`;
+  html += `<div style="height:10px"></div><div class="sub" style="font-weight:600">▶ 决策后 / 被拒（POST-DECISION / REJECTED：初始化晚于截止或可用性不可证 → 只进复盘，绝不进入决策）</div>`;
   if (rej.length) {
     html += `<div class="ev-list">` + rej.map(e => {
       const init = e.initialization_time || "—";
@@ -471,18 +471,18 @@ function renderS4() {
       return `<div class="ev-item bad">
         <div class="head"><span class="src">[${esc(e.event_type)}/${esc(e.severity)}] ${esc(e.source)}</span>
           ${e.is_mock ? '<span class="tag-soft rej">MOCK</span>' : ""}
-          <span class="tag-soft rej">NOT USED</span></div>
+          <span class="tag-soft rej">未使用 NOT USED</span></div>
         <div class="summary">${esc(e.summary)}</div>
-        <div class="meta">Forecast Run / Initialization Time: <b>${esc(init)}</b> · Published At Estimate: ${esc(e.published_at || "—")} · Retrieved At: ${esc(e.retrieved_at || "—")}</div>
-        <div class="meta">Available At: <b>${esc(avail)}</b> · Decision Cutoff: <b>${esc(cut)}</b></div>
-        <div class="meta">Decision Eligible: <b>NO</b> · Reason: <b>${esc(reason)}</b></div>
+        <div class="meta">预报运行/初始化时刻 Forecast Run / Initialization Time: <b>${esc(init)}</b> · 发布时刻(估算) Published At: ${esc(e.published_at || "—")} · 拉取时刻 Retrieved At: ${esc(e.retrieved_at || "—")}</div>
+        <div class="meta">可用时刻 Available At: <b>${esc(avail)}</b> · 决策截止 Decision Cutoff: <b>${esc(cut)}</b></div>
+        <div class="meta">决策可用 Decision Eligible: <b>NO</b> · 原因 Reason: <b>${esc(reason)}</b></div>
         <div class="muted" style="font-size:12px;margin-top:4px">${esc(bizNote)}</div>
       </div>`;
     }).join("") + `</div>`;
   } else {
-    html += `<div class="empty">本决策日未获取到晚于 cutoff 的真实证据。</div>`;
+    html += `<div class="empty">本决策日未获取到被拒的真实证据。</div>`;
   }
-  return section("S4", "Agent Evidence（外部证据 · 经 Evidence Time Gate）", "decision_eligible 由程序裁决",
+  return section("S4", "外部证据（Agent Evidence · 经 Evidence Time Gate）", "decision_eligible 由程序裁决",
     html);
 }
 
@@ -490,8 +490,8 @@ function renderS4() {
 function renderS5() {
   const cases = state.decision.top_cases || [];
   if (!cases.length) {
-    return section("S5", "Similar Historical Cases（历史相似案例 · as-of）", "case_available_at 证明 as-of",
-      `<div class="empty">决策时点前无相似已结算案例（同 node × 小时窗 |Δh|≤3/6，按 |PnL| 排序）</div>`);
+    return section("S5", "历史相似案例（Similar Historical Cases · as-of）", "case_available_at 证明 as-of",
+      `<div class="empty">决策时点前无相似已结算案例（同节点 node × 小时窗 |Δh|≤3/6，按 |PnL| 排序）</div>`);
   }
   const rows = cases.slice(0, 3).map(c => {
     const decision = c.decision !== undefined ? c.decision : c.model_prediction;
@@ -511,11 +511,11 @@ function renderS5() {
       <td class="muted"><code>${esc(c.case_available_at || "—")}</code></td>
     </tr>`;
   }).join("");
-  return section("S5", "Similar Historical Cases（历史相似案例 · as-of）", "只检索结果已完整结算的案例，防穿越",
-    `<div class="sub">检索门槛：case_available_at ≤ 决策时点（decision_time）。命中 ${cases.length} 条（同 node × 小时窗 |Δh|≤3/6，按 |PnL| 排序）。</div>
+  return section("S5", "历史相似案例（Similar Historical Cases · as-of）", "只检索结果已完整结算的案例，防穿越",
+    `<div class="sub">检索门槛：case_available_at ≤ 决策时点（decision_time）。命中 ${cases.length} 条（同节点 node × 小时窗 |Δh|≤3/6，按 |PnL| 排序）。</div>
      <div style="overflow-x:auto"><table class="tbl"><thead><tr>
-       <th>case_id</th><th>decision_date</th><th>node</th><th>hour</th><th>signal</th>
-       <th>expected_return</th><th>outcome</th><th>PnL</th><th>lesson</th><th>case_available_at</th>
+       <th>案例ID case_id</th><th>决策日期 decision_date</th><th>节点 node</th><th>小时 hour</th><th>信号 signal</th>
+       <th>预期价差 expected_return</th><th>结果 outcome</th><th>盈亏 PnL</th><th>教训 lesson</th><th>案例可用时刻 case_available_at</th>
      </tr></thead><tbody>${rows}</tbody></table></div>`);
 }
 
@@ -533,16 +533,16 @@ function renderS6() {
   });
   let reasonHtml = "";
   if (reasons.length) {
-    reasonHtml = `<div class="sub" style="font-weight:600">reason_code（业务解释）</div>` +
+    reasonHtml = `<div class="sub" style="font-weight:600">拒绝原因（reason_code 业务解释）</div>` +
       `<div class="ev-list">` + reasons.map(c =>
         `<div class="ev-item"><div class="head"><span class="src"><code>${esc(c)}</code></span></div>
          <div class="summary">${esc(zh[c] || c)}</div></div>`).join("") + `</div>`;
   } else {
     reasonHtml = `<div class="empty">无风险规则命中（PASS）。</div>`;
   }
-  return section("S6", "Risk Gate（风控闸门）", rg.version || "",
+  return section("S6", "风控闸门（Risk Gate）", rg.version || "",
     `<div style="margin-bottom:10px">${PILL[rg.decision] || esc(rg.decision || "—")}</div>${reasonHtml}
-     ${items.length ? `<div style="height:10px"></div><div class="sub" style="font-weight:600">gate 上下文（as-of 风险特征）</div><div class="kv">${items.join("")}</div>` : ""}`);
+     ${items.length ? `<div style="height:10px"></div><div class="sub" style="font-weight:600">风控上下文（as-of 风险特征）</div><div class="kv">${items.join("")}</div>` : ""}`);
 }
 
 /* ---- Section 7: Rule Engine & Final Recommendation ---- */
@@ -563,29 +563,29 @@ function renderS7() {
   }).join(" · ");
 
   const why = [
-    ["① Model Opinion",
+    ["① 模型观点 Model",
       `expected_return = ${fmt(mo.expected_return, 2)} $/MWh · direction_probability = ${fmtP(mo.direction_probability)}（押注 ${esc(mo.direction || "?")}）· model_signal_strength = ${fmtP(mo.model_signal_strength)} · uncertainty = ${fmtP(mo.uncertainty)}`],
-    ["② Evidence", `${nEl} 条可用证据（eligible）· ${nRej} 条晚于 cutoff 被隔离（只进复盘）`],
-    ["③ Risk Gate", `${esc(rg.decision || "—")} ${(rg.risk_reasons || []).map(c => `· ${esc(c)}(${esc(gateZh[c] || c)})`).join(" ")}`],
-    ["④ Rule Engine", `${PILL[re.decision] || esc(re.decision || "—")} ${rules ? "· " + rules : ""}`],
-    ["⑤ Final", PILL[final] || esc(final || "—")]
+    ["② 证据 Evidence", `${nEl} 条可用证据（eligible）· ${nRej} 条晚于截止被隔离（只进复盘）`],
+    ["③ 风控 Risk Gate", `${esc(rg.decision || "—")} ${(rg.risk_reasons || []).map(c => `· ${esc(c)}(${esc(gateZh[c] || c)})`).join(" ")}`],
+    ["④ 规则引擎 Rule Engine", `${PILL[re.decision] || esc(re.decision || "—")} ${rules ? "· " + rules : ""}`],
+    ["⑤ 最终建议 Final", PILL[final] || esc(final || "—")]
   ].map(([k, v]) => `<div class="why-row"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
 
   const cls = final === "SELL_DA" ? "SELL_DA" : (final === "BUY_DA" ? "BUY_DA" : "NO_TRADE");
   const lockHtml = state.locked
-    ? `<button class="btn" disabled>✓ LOCKED</button>
-       <button class="btn secondary" id="btn-reveal" onclick="revealOutcome()">REVEAL ACTUAL OUTCOME</button>
+    ? `<button class="btn" disabled>✓ 已锁定 LOCKED</button>
+       <button class="btn secondary" id="btn-reveal" onclick="revealOutcome()">揭晓实际结果 REVEAL ACTUAL OUTCOME</button>
        <span class="muted" id="lock-info" style="align-self:center"></span>`
-    : `<button class="btn" id="btn-lock" onclick="lockDecision()">🔒 LOCK DECISION</button>
-       <button class="btn secondary" id="btn-reveal" onclick="revealOutcome()" disabled>REVEAL ACTUAL OUTCOME</button>
+    : `<button class="btn" id="btn-lock" onclick="lockDecision()">🔒 锁定决策 LOCK DECISION</button>
+       <button class="btn secondary" id="btn-reveal" onclick="revealOutcome()" disabled>揭晓实际结果 REVEAL ACTUAL OUTCOME</button>
        <span class="muted" id="lock-info" style="align-self:center"></span>`;
-  return section("S7", "Rule Engine & Final Recommendation（规则引擎与最终建议）", re.version || "",
+  return section("S7", "规则引擎与最终建议（Rule Engine & Final Recommendation）", re.version || "",
     `<div class="final-box ${cls}">
-       <div class="label">FINAL RECOMMENDATION</div>
+       <div class="label">最终建议 FINAL RECOMMENDATION</div>
        <div class="value">${PILL[final] || esc(final)}</div>
        <div class="muted" style="font-size:12px;margin-top:4px">decision_id: <code>${esc(state.decision_id)}</code></div>
      </div>
-     <div class="sub" style="font-weight:600">白盒推导（Model → Evidence → Risk Gate → Rule Engine → Final）</div>
+     <div class="sub" style="font-weight:600">白盒推导链（模型 Model → 证据 Evidence → 风控 Risk Gate → 规则引擎 Rule Engine → 最终建议 Final）</div>
      <div class="why-chain">${why}</div>
      <div style="height:12px"></div>
      <div class="sub" style="font-weight:600">下一步</div>
@@ -624,10 +624,10 @@ function renderReveal() {
   const dec = state.decision;
   let html;
   if (!pt) {
-    html = section("S8", "Post-trade Review（事后复盘）", "LOCK 之后揭晓",
-      `<div class="empty">实际结果尚未揭晓。先 LOCK DECISION，再点 REVEAL ACTUAL OUTCOME。</div>`);
+    html = section("S8", "事后复盘（Post-trade Review）", "LOCK 之后揭晓",
+      `<div class="empty">实际结果尚未揭晓。先点击「锁定决策 LOCK DECISION」，再点「揭晓实际结果 REVEAL ACTUAL OUTCOME」。</div>`);
   } else if (pt.status !== "REVEALED") {
-    html = section("S8", "Post-trade Review（事后复盘）", "LOCK 之后揭晓",
+    html = section("S8", "事后复盘（Post-trade Review）", "LOCK 之后揭晓",
       `<div class="notice"><span class="tag">INFO</span><p>${esc(pt.note || pt.status || "无法复盘")}</p></div>`);
   } else {
     html = renderRevealFilled();
@@ -674,33 +674,33 @@ function renderRevealFilled() {
   };
   const chips = prim.map(t => `<span class="chip ${chipCls(t)}">${esc(t)}</span>`).join("");
 
-  return section("S8", "Post-trade Review（事后复盘）", "LOCK 之后揭晓 · 真实事后结算信息，仅用于复盘，绝不回灌决策",
+  return section("S8", "事后复盘（Post-trade Review）", "LOCK 之后揭晓 · 真实事后结算信息，仅用于复盘，绝不回灌决策",
     `<div class="reveal">
-       <div class="rhead">REVEAL ACTUAL OUTCOME</div>
+       <div class="rhead">揭晓实际结果 REVEAL ACTUAL OUTCOME</div>
        <div class="kv">
-         <div class="item"><div class="k">Actual DA</div><div class="v big-number">${fmt(pt.actual_da, 2)} $/MWh</div></div>
-         <div class="item"><div class="k">Actual RTPD</div><div class="v big-number">${fmt(pt.actual_rtpd, 2)} $/MWh</div></div>
-         <div class="item"><div class="k">Actual Return (DA−RTPD)</div><div class="v big-number ${numCls(pt.actual_return)}">${fmt(pt.actual_return, 2)} $/MWh</div></div>
-         <div class="item"><div class="k">PnL（1 MWh/仓）</div><div class="v big-number ${numCls(pt.pnl)}">${sign(pt.pnl)}${fmt(pt.pnl, 2)} $/MWh</div></div>
+         <div class="item"><div class="k">实际 DA Actual DA</div><div class="v big-number">${fmt(pt.actual_da, 2)} $/MWh</div></div>
+         <div class="item"><div class="k">实际 RTPD Actual RTPD</div><div class="v big-number">${fmt(pt.actual_rtpd, 2)} $/MWh</div></div>
+         <div class="item"><div class="k">实际价差 Actual Return (DA−RTPD)</div><div class="v big-number ${numCls(pt.actual_return)}">${fmt(pt.actual_return, 2)} $/MWh</div></div>
+         <div class="item"><div class="k">盈亏 PnL（1 MWh/仓）</div><div class="v big-number ${numCls(pt.pnl)}">${sign(pt.pnl)}${fmt(pt.pnl, 2)} $/MWh</div></div>
        </div>
        <div style="height:10px"></div>
        <div class="kv">
-         <div class="item"><div class="k">Direction Correct?</div><div class="v">
+         <div class="item"><div class="k">方向正确? Direction Correct?</div><div class="v">
            ${pt.direction_correct === null || pt.direction_correct === undefined ? '<span class="pill nt">N/A（未交易）</span>'
-           : pt.direction_correct ? '<span class="pill ok">YES</span>' : '<span class="pill no">NO</span>'}</div></div>
-         <div class="item"><div class="k">Prediction Error</div><div class="v mono">${pt.model_prediction_error === null || pt.model_prediction_error === undefined ? "—" : sign(pt.model_prediction_error) + fmt(pt.model_prediction_error, 2) + " $/MWh"}</div></div>
-         <div class="item"><div class="k">Trade Profitable?</div><div class="v">
-           ${pt.pnl > 0 ? '<span class="pill ok">YES</span>' : pt.pnl < 0 ? '<span class="pill no">NO</span>' : '<span class="pill nt">N/A（未交易）</span>'}</div></div>
-         <div class="item"><div class="k">Risk Gate Correct?</div><div class="v"><span class="chip ${rgc.cls}">${esc(rgc.label)}</span> <span class="muted">${esc(rgc.text)}</span></div></div>
-         <div class="item"><div class="k">Decision Quality</div><div class="v"><span class="chip ${quality.cls}">${esc(quality.label)}</span> <span class="muted">${esc(quality.text)}</span></div></div>
+           : pt.direction_correct ? '<span class="pill ok">是 YES</span>' : '<span class="pill no">否 NO</span>'}</div></div>
+         <div class="item"><div class="k">预测误差 Prediction Error</div><div class="v mono">${pt.model_prediction_error === null || pt.model_prediction_error === undefined ? "—" : sign(pt.model_prediction_error) + fmt(pt.model_prediction_error, 2) + " $/MWh"}</div></div>
+         <div class="item"><div class="k">交易盈利? Trade Profitable?</div><div class="v">
+           ${pt.pnl > 0 ? '<span class="pill ok">是 YES</span>' : pt.pnl < 0 ? '<span class="pill no">否 NO</span>' : '<span class="pill nt">N/A（未交易）</span>'}</div></div>
+         <div class="item"><div class="k">风控判断正确? Risk Gate Correct?</div><div class="v"><span class="chip ${rgc.cls}">${esc(rgc.label)}</span> <span class="muted">${esc(rgc.text)}</span></div></div>
+         <div class="item"><div class="k">决策质量 Decision Quality</div><div class="v"><span class="chip ${quality.cls}">${esc(quality.label)}</span> <span class="muted">${esc(quality.text)}</span></div></div>
        </div>
      </div>
      <div style="height:12px"></div>
-     <div class="sub" style="font-weight:600">Review Category（结构化分类，非 LLM 编造）</div>
+     <div class="sub" style="font-weight:600">复盘分类 Review Category（结构化分类，非 LLM 编造）</div>
      <div class="chips">${chips}</div>
      ${notes.length ? `<div style="height:8px"></div><div class="ev-list">${notes.map(n => `<div class="ev-item"><div class="summary">↳ ${esc(n)}</div></div>`).join("")}</div>` : ""}
      <div style="height:8px"></div>
-     <div class="sub" style="font-weight:600">What happened / Why / Lessons</div>
+     <div class="sub" style="font-weight:600">发生了什么 / 为什么 / 教训（What happened / Why / Lessons）</div>
      <div class="ev-list">${notes.length ? notes.map(n => `<div class="ev-item"><div class="summary">${esc(n)}</div></div>`).join("") : `<div class="empty">（无附加复盘说明）</div>`}</div>`);
 }
 
@@ -725,8 +725,8 @@ function renderAudit() {
   const versions = Object.entries(m).filter(([k]) => k !== "honest_labels" && k !== "generator").map(([k, v]) =>
     `<div><code>${esc(k)}</code> = ${esc(v)}</div>`).join("");
   const labels = (m.honest_labels || []).map(l => `<li>${esc(l)}</li>`).join("");
-  return section("S9", "Audit Panel（审计面板）", "OVERALL 由真实运行审计计算 · 不写死 PASS",
-    `<div class="audit-overall"><span class="tag">OVERALL</span> ${overPill}</div>
+  return section("S9", "审计面板（Audit Panel）", "OVERALL 由真实运行审计计算 · 不写死 PASS",
+    `<div class="audit-overall"><span class="tag">综合结论 OVERALL</span> ${overPill}</div>
      <div class="audit-grid">${items.length ? auditItems : emptyHtml}</div>
      <div class="versions">${versions}</div>
      <div style="height:8px"></div>
@@ -744,8 +744,8 @@ async function ask(q) {
     const data = await post("/api/ask", { question, decision_id: state.decision_id });
     out.innerHTML = renderAsk(data);
   } catch (e) {
-    const code = e.code ? `<div class="err-code">ERROR CODE: ${esc(e.code)}</div>` : "";
-    const action = e.action ? `<div class="err-action"><b>Suggested action:</b> ${esc(e.action)}</div>` : "";
+    const code = e.code ? `<div class="err-code">错误码 ERROR CODE: ${esc(e.code)}</div>` : "";
+    const action = e.action ? `<div class="err-action"><b>建议操作 Suggested action:</b> ${esc(e.action)}</div>` : "";
     out.innerHTML = `<div class="notice err"><span class="tag">ERROR</span><div>${code}<p>${esc(e.message)}</p>${action}</div></div>`;
   }
 }
@@ -759,44 +759,44 @@ function renderAsk(data) {
   // trace 可能是 list，也可能是 copilot 的 dict {user_question, mode, provider, model, steps:[...]}
   let steps = Array.isArray(data.trace) ? data.trace : ((data.trace || {}).steps || []);
   const stageLabel = {
-    "route": "ROUTE", "tool": "TOOL SELECTED", "llm": "LLM", "guard": "GUARD",
-    "user": "USER QUESTION"
+    "route": "路由 ROUTE", "tool": "选择工具 TOOL", "llm": "LLM", "guard": "守卫 GUARD",
+    "user": "用户问题 USER QUESTION"
   };
   const stepsHtml = steps.map((t, i) => {
     if (t.stage === "route" || (t.step && t.stage === undefined && t.selected_tool)) {
-      return `<div class="tstep tool"><div class="tlabel">STEP ${i + 1} · ROUTE: ${esc(t.selected_tool || t.tool || "")}</div><pre>${esc(t.reason || "")}</pre></div>`;
+      return `<div class="tstep tool"><div class="tlabel">步骤 ${i + 1} · 路由 ROUTE: ${esc(t.selected_tool || t.tool || "")}</div><pre>${esc(t.reason || "")}</pre></div>`;
     }
     if (t.stage === "tool" || t.tool || t.tool_name || t.name) {
       const name = t.tool_name || t.tool || t.name || "";
       let args = t.arguments || t.args || t.parameters || {};
       try { args = JSON.stringify(args, null, 1); } catch (e) { args = String(args); }
       const res = t.result_summary || t.result || t.output || "";
-      return `<div class="tstep tool"><div class="tlabel">STEP ${i + 1} · TOOL SELECTED: ${esc(name)} ${t.status ? "[" + esc(t.status) + "]" : ""}</div>
-        <pre>arguments: ${esc(args || "{}")}\nresult: ${esc(typeof res === "string" ? res : JSON.stringify(res, null, 1) || "—")}</pre></div>`;
+      return `<div class="tstep tool"><div class="tlabel">步骤 ${i + 1} · 选择工具 TOOL: ${esc(name)} ${t.status ? "[" + esc(t.status) + "]" : ""}</div>
+        <pre>参数 arguments: ${esc(args || "{}")}\n结果 result: ${esc(typeof res === "string" ? res : JSON.stringify(res, null, 1) || "—")}</pre></div>`;
     }
     if (t.stage === "llm" || t.provider) {
-      return `<div class="tstep answer"><div class="tlabel">STEP ${i + 1} · LLM ${t.status ? "[" + esc(t.status) + "]" : ""} ${esc(t.provider || "")}${esc(t.model ? "/" + t.model : "")}</div><pre>${esc(t.reason || t.summary || "")}</pre></div>`;
+      return `<div class="tstep answer"><div class="tlabel">步骤 ${i + 1} · LLM ${t.status ? "[" + esc(t.status) + "]" : ""} ${esc(t.provider || "")}${esc(t.model ? "/" + t.model : "")}</div><pre>${esc(t.reason || t.summary || "")}</pre></div>`;
     }
     if (t.stage === "guard") {
-      return `<div class="tstep"><div class="tlabel">STEP ${i + 1} · GUARD ${t.status ? "[" + esc(t.status) + "]" : ""}</div><pre>${esc(t.detail || "")}</pre></div>`;
+      return `<div class="tstep"><div class="tlabel">步骤 ${i + 1} · 守卫 GUARD ${t.status ? "[" + esc(t.status) + "]" : ""}</div><pre>${esc(t.detail || "")}</pre></div>`;
     }
     if (t.step === "user" || t.role === "user" || (t.content && !t.stage)) {
-      return `<div class="tstep user"><div class="tlabel">STEP ${i + 1} · USER QUESTION</div><pre>${esc(t.content || t.text || "")}</pre></div>`;
+      return `<div class="tstep user"><div class="tlabel">步骤 ${i + 1} · 用户问题 USER QUESTION</div><pre>${esc(t.content || t.text || "")}</pre></div>`;
     }
     // generic
-    return `<div class="tstep"><div class="tlabel">STEP ${i + 1} · ${esc(stageLabel[t.stage] || "")}</div><pre>${esc(JSON.stringify(t))}</pre></div>`;
+    return `<div class="tstep"><div class="tlabel">步骤 ${i + 1} · ${esc(stageLabel[t.stage] || "")}</div><pre>${esc(JSON.stringify(t))}</pre></div>`;
   }).join("");
   const tools = (data.tools_called || []).length
-    ? `<div class="muted" style="margin-top:6px">tools_called: ${data.tools_called.map(tc => esc(tc.tool || tc)).join(", ")}</div>` : "";
+    ? `<div class="muted" style="margin-top:6px">调用工具 tools_called: ${data.tools_called.map(tc => esc(tc.tool || tc)).join(", ")}</div>` : "";
 
   if (degraded) {
     return `<div class="llm-note">${esc(data.answer || "LLM NOT CONFIGURED")}</div>
-      ${stepsHtml ? `<div style="height:6px"></div><div class="sub" style="font-weight:600">Agent Trace（工具路由已执行，无需 LLM）</div><div class="trace">${stepsHtml}</div>` : ""}`;
+      ${stepsHtml ? `<div style="height:6px"></div><div class="sub" style="font-weight:600">Agent 工具调用流水（路由已执行，无需 LLM）</div><div class="trace">${stepsHtml}</div>` : ""}`;
   }
-  return `<div style="margin-top:6px"><b>Agent Answer</b></div>
+  return `<div style="margin-top:6px"><b>Agent 回答 Agent Answer</b></div>
     <div class="ev-item" style="margin-top:4px"><div class="summary" style="white-space:pre-wrap">${esc(data.answer || "—")}</div></div>
     ${tools}
-    ${stepsHtml ? `<div style="height:6px"></div><div class="sub" style="font-weight:600">Agent Trace</div><div class="trace">${stepsHtml}</div>` : ""}`;
+    ${stepsHtml ? `<div style="height:6px"></div><div class="sub" style="font-weight:600">Agent 工具调用流水 Agent Trace</div><div class="trace">${stepsHtml}</div>` : ""}`;
 }
 
 /* ============ Daily Brief ============ */
@@ -812,8 +812,8 @@ async function generateBrief(allHours, allNodes) {
     });
     out.innerHTML = renderBrief(data);
   } catch (e) {
-    const code = e.code ? `<div class="err-code">ERROR CODE: ${esc(e.code)}</div>` : "";
-    const action = e.action ? `<div class="err-action"><b>Suggested action:</b> ${esc(e.action)}</div>` : "";
+    const code = e.code ? `<div class="err-code">错误码 ERROR CODE: ${esc(e.code)}</div>` : "";
+    const action = e.action ? `<div class="err-action"><b>建议操作 Suggested action:</b> ${esc(e.action)}</div>` : "";
     out.innerHTML = `<div class="notice err"><span class="tag">ERROR</span><div>${code}<p>${esc(e.message)}</p>${action}</div></div>`;
   }
 }
@@ -825,37 +825,37 @@ function renderBrief(d) {
   const risks = d.top_risks || [];
   const rows = d.rows || [];
   const kv = [
-    ["Decision Date", d.decision_date],
-    ["Node Scope", d.node_scope],
-    ["Candidates", d.n_candidates],
+    ["决策日期 Decision Date", d.decision_date],
+    ["节点范围 Node Scope", d.node_scope],
+    ["候选数 Candidates", d.n_candidates],
     ["BUY_DA", s.BUY_DA], ["SELL_DA", s.SELL_DA], ["NO_TRADE", s.NO_TRADE],
-    ["RiskGate PASS/WARN/REJECT", `${(s.risk_gate || {}).PASS} / ${(s.risk_gate || {}).WARNING} / ${(s.risk_gate || {}).REJECT}`]
+    ["风控 PASS/WARN/REJECT", `${(s.risk_gate || {}).PASS} / ${(s.risk_gate || {}).WARNING} / ${(s.risk_gate || {}).REJECT}`]
   ];
   const grid = kv.map(([k, v]) => `<div class="item"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join("");
-  let html = `<div class="sub">当日已生成决策汇总（evidence=${esc(d.evidence_mode)}；扫描 ${esc(d.node_scope)}）</div><div class="kv">${grid}</div>`;
+  let html = `<div class="sub">当日已生成决策汇总（证据 evidence=${esc(d.evidence_mode)}；扫描 ${esc(d.node_scope)}）</div><div class="kv">${grid}</div>`;
   if (opps.length) {
-    html += `<div style="height:8px"></div><div class="sub" style="font-weight:600">Top Opportunities（仅 as-of 信息：|expected_return| 降序）</div>` +
-      `<table class="tbl"><thead><tr><th>node</th><th>hour</th><th>final</th><th>expected_return</th><th>signal_strength</th></tr></thead><tbody>` +
+    html += `<div style="height:8px"></div><div class="sub" style="font-weight:600">最佳机会 Top Opportunities（仅 as-of 信息：|expected_return| 降序）</div>` +
+      `<table class="tbl"><thead><tr><th>节点 node</th><th>小时 hour</th><th>最终建议 final</th><th>预期价差 expected_return</th><th>信号强度 signal_strength</th></tr></thead><tbody>` +
       opps.map(o => `<tr><td><code>${esc(o.node)}</code></td><td>H${o.hour}</td><td>${PILL[o.final] || esc(o.final)}</td>
         <td class="num ${numCls(o.expected_return)}">${fmt(o.expected_return, 2)}</td><td class="num">${fmtP(o.signal_strength)}</td></tr>`).join("") +
       `</tbody></table>`;
   }
   if (risks.length) {
-    html += `<div style="height:8px"></div><div class="sub" style="font-weight:600">Top Risks（RiskGate REJECT）</div>` +
+    html += `<div style="height:8px"></div><div class="sub" style="font-weight:600">主要风险 Top Risks（风控拒绝 RiskGate REJECT）</div>` +
       `<div class="ev-list">` + risks.map(r => `
         <div class="ev-item bad"><div class="head"><span class="src">${esc(r.node)} H${r.hour}</span>
-          <span class="tag-soft">final: ${esc(r.final)}</span><span class="tag-soft">er: ${fmt(r.expected_return, 2)}</span></div>
+          <span class="tag-soft">最终建议 final: ${esc(r.final)}</span><span class="tag-soft">预期价差 er: ${fmt(r.expected_return, 2)}</span></div>
         <div class="summary">${r.risk_reasons.map(esc).join("<br>")}</div></div>`).join("") + `</div>`;
   }
   if (rows.length) {
     html += `<div style="height:8px"></div><div class="sub" style="font-weight:600">全部候选</div>` +
-      `<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>node</th><th>hour</th><th>final</th><th>risk_gate</th><th>expected_return</th></tr></thead><tbody>` +
+      `<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>节点 node</th><th>小时 hour</th><th>最终建议 final</th><th>风控 risk_gate</th><th>预期价差 expected_return</th></tr></thead><tbody>` +
       rows.map(r => `<tr><td><code>${esc(r.node)}</code></td><td>H${r.hour}</td><td>${PILL[r.final] || esc(r.final)}</td>
         <td>${PILL[r.risk_gate] || esc(r.risk_gate || "—")}</td><td class="num">${fmt(r.expected_return, 2)}</td></tr>`).join("") +
       `</tbody></table></div>`;
   }
   if (!rows.length) {
-    html += `<div class="empty" style="margin-top:8px">该日期尚无已生成决策。先 RUN DECISION，或点"补齐 24 小时"。</div>`;
+    html += `<div class="empty" style="margin-top:8px">该日期尚无已生成决策。先点「运行决策 RUN DECISION」，或点"补齐 24 小时"。</div>`;
   }
   return html;
 }
