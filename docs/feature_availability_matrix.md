@@ -1,7 +1,7 @@
 # 特征可用性矩阵（canonical dataset）
 
 > 生成时间：2026-08-09T08:16:24.488427　|　特征版本：canonical_v1　|　生成者：canonical.py
-> 行语义：一行 = (node, target_date, hour)；决策时点 = decision_date = target_date-1 的 13:00 前。
+> 行语义：一行 = (node, target_date, hour)；决策时点 = decision_date = target_date-1 的 10:00 前。
 > **铁律**：任何特征若 `available_at > decision_cutoff` 禁止进入训练/推理；UNKNOWN 未确认前默认禁用。
 
 ## X 特征（决策时点可见）

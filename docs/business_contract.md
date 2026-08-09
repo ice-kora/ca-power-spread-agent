@@ -7,7 +7,7 @@
 
 ## 2. 决策时点与数据可见性（铁律）
 
-交易员在 **Day-Ahead Market bid cutoff 前**（约 D-1 日 13:00，日前出清前）提交 D+1 的虚拟报价。
+交易员在 **Day-Ahead Market bid cutoff 前**（D-1 日 10:00，DA bid 截止（官方 BPM）前）提交 D+1 的虚拟报价。
 
 在这个决策时点：
 - ❌ D+1 实际 DA clearing price：**尚未产生，不能作输入**

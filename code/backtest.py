@@ -731,7 +731,7 @@ def write_report(meta, strategy_rows, frames, pred_sources, out_path, rows_elca=
     A("")
     A("> 生成时间：%s" % meta["generated_at"])
     A("> 数据：canonical.parquet（无泄漏层，Agent C 消费同一数据）")
-    A("> 决策时点：decision_date 13:00 前（契约冻结）；PnL 按 1 MWh normalized。")
+    A("> 决策时点：decision_date 10:00 前（契约冻结）；PnL 按 1 MWh normalized。")
     A("> 评估窗口：%s" % meta["eval_window"])
     A("> 主策略节点：ZP26（SNLNDRO / CONTROLX）；ELCAJNGT cold-start 单独评估。")
     A("")

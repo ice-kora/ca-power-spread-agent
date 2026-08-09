@@ -26,7 +26,7 @@ features.parquet 保留作对比）。修复 2026-08-07 审计确认的全部数
 --------------------------
     行   = (node, target_date, hour)
     决策日 decision_date = target_date - 1
-    决策截止 decision_cutoff = decision_date 13:00（bid cutoff，契约冻结）
+    决策截止 decision_cutoff = decision_date 10:00（Day-Ahead bid cutoff，契约冻结）
 
 历史特征以"交付日"对齐（delivery day = target_date - k）：
     lag1        -> target_date - 2  （决策时已知的最后一个"整日完整"交付日：DA(target_date-1)
@@ -114,7 +114,7 @@ ELCA_SPLIT_RANGES = {
 }
 
 # 决策截止（业务契约冻结）
-DECISION_CUTOFF_DESC = "decision_date 13:00 (Day-Ahead bid cutoff, frozen contract)"
+DECISION_CUTOFF_DESC = "decision_date 10:00 (Day-Ahead bid cutoff, frozen contract)"
 
 # 默认禁用的特征（保守模式：UNKNOWN 未确认前不进入训练/推理）
 DISABLED_FEATURES = {
@@ -127,7 +127,7 @@ DISABLED_FEATURES = {
 
 # ---------------------------------------------------------------------------
 # Leakage Guard：每个 X 特征的可用时点（相对 target_date T 的偏移）
-#   available_at 必须是"决策截止（decision_date 13:00）之前或等于"才放行。
+#   available_at 必须是"决策截止（decision_date 10:00）之前或等于"才放行。
 # ---------------------------------------------------------------------------
 STATIC_FEATURES = {"hour", "node", "zone", "dow", "month", "is_holiday", "solar_flag"}
 PRICE_LAG_FEATURES = {"da_lag1", "rtpd_lag1", "spread_lag1",
@@ -503,7 +503,7 @@ def build_schema(df, n_nan_label_dropped, master):
         "status": "canonical（取代已废弃 features.py / features.parquet，旧文件保留作对比）",
         "row_semantics": (
             "一行 = 一个 (node, target_date, hour)；target_date = 交付日 D+1；"
-            "decision_date = target_date - 1；decision_cutoff = decision_date 13:00（契约冻结）"),
+            "decision_date = target_date - 1；decision_cutoff = decision_date 10:00（契约冻结）"),
         "source": "code/data/master.csv",
         "rows": int(len(df)),
         "nodes": sorted(df["node"].unique().tolist()),
@@ -551,7 +551,7 @@ def write_availability_matrix(schema):
         "",
         "> 生成时间：%s　|　特征版本：%s　|　生成者：%s" % (
             schema["generated_at"], schema["feature_version"], schema["generated_by"]),
-        "> 行语义：一行 = (node, target_date, hour)；决策时点 = decision_date = target_date-1 的 13:00 前。",
+        "> 行语义：一行 = (node, target_date, hour)；决策时点 = decision_date = target_date-1 的 10:00 前。",
         "> **铁律**：任何特征若 `available_at > decision_cutoff` 禁止进入训练/推理；UNKNOWN 未确认前默认禁用。",
         "",
         "## X 特征（决策时点可见）",

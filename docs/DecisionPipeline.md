@@ -26,7 +26,7 @@
 | `node` | 目标节点（ZP26: SNLNDRO/CONTROLX；ELCA 为 cold-start 单独评估） |
 | `target_date` | 交付日 D+1 |
 | `hour` | 目标小时 H1–H24 |
-| 决策时点 | **D-1 13:00 前**（DA bid cutoff 前）可见信息：历史价格滞后、负荷预测/实际、天气滞后、日历特征、node 历史统计（滞后约定 lag1→target_date-2，宁保守不泄漏） |
+| 决策时点 | **D-1 10:00 前**（DA bid cutoff 前）可见信息：历史价格滞后、负荷预测/实际、天气滞后、日历特征、node 历史统计（滞后约定 lag1→target_date-2，宁保守不泄漏） |
 
 ## 3. 第一版 White-box Risk Gate
 
