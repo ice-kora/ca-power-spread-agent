@@ -33,11 +33,28 @@ As-of Decision-Time Evidence 硬约束（本次修正核心）：
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+
+# 保证从任意 cwd 导入 code.*（Provenance 常量单一事实来源）
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from code.market_rules import (  # noqa: E402
+    CURRENT_MARKET_RULE_VERSION,
+    MARKET_RULE_VERSIONS,
+    normalize_market_rule_version,
+)
+from code.data_acquisition.schemas import (  # noqa: E402
+    SOURCE_TYPES,
+    infer_source_type,
+)
 
 # ---------------------------------------------------------------------------
 # 枚举常量（单一事实来源）
@@ -49,7 +66,7 @@ DIRECTIONAL_EFFECTS: tuple = ("SUPPORT_POSITIVE", "SUPPORT_NEGATIVE", "UNCERTAIN
 #: severity 允许值（自低到高）
 SEVERITY_LEVELS: tuple = ("INFO", "WATCH", "WARNING", "SEVERE", "CRITICAL")
 
-#: Evidence dict 的标准字段顺序（含时间字段，团队口径）
+#: Evidence dict 的标准字段顺序（含时间字段 + Provenance 字段，团队口径）
 EVIDENCE_KEYS: tuple = (
     "evidence_id",
     "event_type",
@@ -60,13 +77,22 @@ EVIDENCE_KEYS: tuple = (
     "severity",
     "source",
     "source_url",
+    "source_type",
+    "is_mock",
+    "raw_source_id",
     "published_at",
     "retrieved_at",
+    "target_time",
     "decision_cutoff",
+    "time_eligible",
+    "backtest_eligible",
+    "production_eligible",
     "decision_eligible",
     "summary",
     "directional_effect",
     "confidence",
+    "feature_value",
+    "market_rule_version",
 )
 
 #: 未来待接入的真实数据源类型（当前版本无真实数据源，全部留 TODO）
@@ -137,8 +163,14 @@ class Evidence:
       event_start_time / event_end_time : 事件本身发生的时段
       published_at                      : 证据公开时间（核心：与 decision_cutoff 比较）
       retrieved_at                      : Agent 检索时间（审计用）
+      target_time                       : 该证据指向的交付时刻（UTC naive，可为空）
       decision_cutoff                   : 该证据对应的决策截止（D-1 日 10:00 PT）
       decision_eligible                 : 程序计算 = (published_at <= decision_cutoff)
+
+    Provenance 字段（进入 Risk Gate / Rule Engine 前的可追溯性）：
+      source / source_type / is_mock / raw_source_id / target_time /
+      available_at(=published_at) / retrieved_at /
+      time_eligible / backtest_eligible / production_eligible / feature_value
     """
 
     evidence_id: str = ""
@@ -150,17 +182,23 @@ class Evidence:
     severity: str = "INFO"
     source: str = ""
     source_url: str = ""
+    source_type: str = ""
+    is_mock: bool = False
+    raw_source_id: str = ""
     published_at: str = ""
     retrieved_at: str = ""
+    target_time: str = ""
     decision_cutoff: str = ""
     summary: str = ""
     directional_effect: str = "UNCERTAIN"
     confidence: float = 0.0
+    feature_value: Optional[float] = None
+    market_rule_version: str = CURRENT_MARKET_RULE_VERSION
 
     # -- 程序计算的时间门槛（As-of Decision-Time 硬约束）-------------------
     @property
-    def decision_eligible(self) -> bool:
-        """是否可在该决策时点使用：published_at <= decision_cutoff（程序计算）。
+    def time_eligible(self) -> bool:
+        """R1/R2 纯时间门槛：published_at <= decision_cutoff（程序计算）。
 
         任一时间缺失 -> False（保守，宁保守不穿越）。绝不由 LLM 判断。
         """
@@ -172,6 +210,35 @@ class Evidence:
             return pub <= cutoff
         except Exception:
             return False
+
+    @property
+    def decision_eligible(self) -> bool:
+        """R7 硬隔离：时间合格 且 非 MOCK 才可参与决策。MOCK 证据恒为 FALSE。
+
+        published_at > decision_cutoff → Post-decision，只能进 Post-trade Review。
+        程序计算，禁止 LLM 判断。
+        """
+        return bool(self.time_eligible and not self.is_mock)
+
+    @property
+    def backtest_eligible(self) -> bool:
+        """该证据可否进入严格 as-of 回测：时间合格 且 非 MOCK 且 有可核实的发布时间。"""
+        if self.is_mock:
+            return False
+        if not self.time_eligible:
+            return False
+        return parse_timestamp(self.published_at) is not None
+
+    @property
+    def production_eligible(self) -> bool:
+        """该证据可否进入生产决策：时间合格 且 非 MOCK 且 published/retrieved 齐备。"""
+        if self.is_mock:
+            return False
+        if not self.time_eligible:
+            return False
+        if parse_timestamp(self.published_at) is None or parse_timestamp(self.retrieved_at) is None:
+            return False
+        return True
 
     # -- 规范化 ------------------------------------------------------------
     def normalize(self) -> "Evidence":
@@ -187,14 +254,27 @@ class Evidence:
         self.severity = self.severity if self.severity in SEVERITY_LEVELS else "INFO"
         self.source = _coerce_str(self.source)
         self.source_url = _coerce_str(self.source_url)
+        # source_type：显式值优先；未给则按 source/event_type 启发式推断
+        if self.source_type not in SOURCE_TYPES:
+            self.source_type = infer_source_type(self.source, self.event_type)
+        self.is_mock = _coerce_bool(self.is_mock)
+        self.raw_source_id = _coerce_str(self.raw_source_id)
         self.published_at = _coerce_str(self.published_at)
         self.retrieved_at = _coerce_str(self.retrieved_at)
+        self.target_time = _coerce_str(self.target_time)
         self.decision_cutoff = _coerce_str(self.decision_cutoff)
         self.summary = _coerce_str(self.summary)
         # 严格三态：LLM/上游给任何非法值都回退 UNCERTAIN（宁可未知，不可乱判方向）
         if self.directional_effect not in DIRECTIONAL_EFFECTS:
             self.directional_effect = "UNCERTAIN"
         self.confidence = min(1.0, max(0.0, _coerce_float(self.confidence)))
+        if self.feature_value is not None:
+            try:
+                fv = float(self.feature_value)
+                self.feature_value = fv if fv == fv else None  # NaN → None
+            except (TypeError, ValueError):
+                self.feature_value = None
+        self.market_rule_version = normalize_market_rule_version(self.market_rule_version)
         return self
 
     # -- 序列化 ------------------------------------------------------------
@@ -210,13 +290,22 @@ class Evidence:
             "severity": self.severity,
             "source": self.source,
             "source_url": self.source_url,
+            "source_type": self.source_type,
+            "is_mock": bool(self.is_mock),
+            "raw_source_id": self.raw_source_id,
             "published_at": self.published_at,
             "retrieved_at": self.retrieved_at,
+            "target_time": self.target_time,
             "decision_cutoff": self.decision_cutoff,
+            "time_eligible": bool(self.time_eligible),
+            "backtest_eligible": bool(self.backtest_eligible),
+            "production_eligible": bool(self.production_eligible),
             "decision_eligible": bool(self.decision_eligible),
             "summary": self.summary,
             "directional_effect": self.directional_effect,
             "confidence": self.confidence,
+            "feature_value": self.feature_value,
+            "market_rule_version": self.market_rule_version,
         }
 
     def to_jsonable(self) -> Dict[str, Any]:
@@ -240,6 +329,9 @@ def new_uncertain_evidence(
     decision_cutoff: str = "",
     summary: str = "暂无真实数据源：该证据当前无法核实，方向未知（UNCERTAIN）。",
     confidence: float = 0.0,
+    is_mock: bool = False,
+    raw_source_id: str = "",
+    target_time: str = "",
 ) -> Evidence:
     """构造一条方向未知的证据（当前版本无真实数据源，一律走这里）。"""
     return Evidence(
@@ -249,8 +341,11 @@ def new_uncertain_evidence(
         severity=severity,
         source=source,
         source_url=source_url,
+        is_mock=_coerce_bool(is_mock),
+        raw_source_id=raw_source_id,
         published_at=published_at,
         retrieved_at=retrieved_at,
+        target_time=target_time,
         decision_cutoff=decision_cutoff,
         summary=summary,
         directional_effect="UNCERTAIN",
@@ -270,12 +365,18 @@ def evidence_from_dict(raw: Dict[str, Any]) -> Evidence:
         severity=raw.get("severity", "INFO"),
         source=raw.get("source", ""),
         source_url=raw.get("source_url", ""),
+        source_type=raw.get("source_type", ""),
+        is_mock=_coerce_bool(raw.get("is_mock", False)),
+        raw_source_id=raw.get("raw_source_id", ""),
         published_at=raw.get("published_at", ""),
         retrieved_at=raw.get("retrieved_at", ""),
+        target_time=raw.get("target_time", ""),
         decision_cutoff=raw.get("decision_cutoff", ""),
         summary=raw.get("summary", ""),
         directional_effect=raw.get("directional_effect", "UNCERTAIN"),
         confidence=raw.get("confidence", 0.0),
+        feature_value=raw.get("feature_value"),
+        market_rule_version=raw.get("market_rule_version", CURRENT_MARKET_RULE_VERSION),
     )
     return ev.normalize()
 
@@ -309,6 +410,32 @@ def validate_evidence(ev: Dict[str, Any]) -> List[str]:
             errors.append(f"confidence 越界: {c}")
     except (TypeError, ValueError):
         errors.append(f"confidence 非数值: {ev.get('confidence')!r}")
+    st = _coerce_str(ev.get("source_type"))
+    if st and st not in SOURCE_TYPES:
+        errors.append(f"source_type 非法: {st!r}（允许: {SOURCE_TYPES}）")
+    if not isinstance(ev.get("is_mock"), bool):
+        errors.append(f"is_mock 非布尔: {ev.get('is_mock')!r}")
+    mrv = _coerce_str(ev.get("market_rule_version"))
+    if mrv and mrv not in MARKET_RULE_VERSIONS:
+        errors.append(f"market_rule_version 非法: {mrv!r}（允许: {MARKET_RULE_VERSIONS}）")
+
+    # eligibility 三拆复算 + 硬规则（R7）：MOCK 证据永不参与决策
+    is_mock = _coerce_bool(ev.get("is_mock"))
+    if is_mock and (ev.get("decision_eligible") or ev.get("backtest_eligible")
+                    or ev.get("production_eligible")):
+        errors.append(
+            "硬规则 R7: is_mock=True 禁止声明 decision_eligible / backtest_eligible "
+            "/ production_eligible（MOCK 仅用于测试/演示，即便 published_at<=cutoff 也不行）")
+    try:
+        obj = evidence_from_dict(ev)
+        for key in ("time_eligible", "backtest_eligible", "production_eligible",
+                    "decision_eligible"):
+            if bool(ev.get(key)) != bool(getattr(obj, key)):
+                errors.append(
+                    f"{key} 漂移: stored={bool(ev.get(key))} "
+                    f"recomputed={bool(getattr(obj, key))}")
+    except Exception:
+        pass
     return errors
 
 

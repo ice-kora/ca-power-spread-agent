@@ -35,7 +35,7 @@ if str(REPO_ROOT) not in sys.path:
 from code.data_acquisition.base import CollectionResult  # noqa: E402
 from code.data_acquisition.caiso_oasis import CAISOLoadForecastCollector  # noqa: E402
 from code.data_acquisition.schemas import MODE_BACKTEST, MODE_PRODUCTION  # noqa: E402
-from code.data_acquisition.weather_gfs import GFSWeatherCollector  # noqa: E402
+from code.data_acquisition.weather_gfs import DEFAULT_CYCLE, GFSWeatherCollector  # noqa: E402
 
 
 def _sp(x) -> None:
@@ -89,7 +89,9 @@ def main(argv=None) -> int:
     p.add_argument("--source", choices=["gfs", "caiso", "all"], default="all")
     p.add_argument("--node", default="CONTROLX_1_N001",
                    help="GFS 节点（SNLNDRO_1_N001 / CONTROLX_1_N001 / ELCAJNGT_7_N001）")
-    p.add_argument("--cycle", default="12Z", help="GFS run 周期（00Z/06Z/12Z/18Z）")
+    p.add_argument("--cycle", default=DEFAULT_CYCLE,
+                   help=f"GFS run 周期（00Z/06Z/12Z/18Z；默认 {DEFAULT_CYCLE}，"
+                        f"仅 00Z/06Z 可严格回测）")
     p.add_argument("--resource", default="CA ISO-TAC",
                    help="OASIS TAC_AREA_NAME（系统全口径='CA ISO-TAC'）")
     p.add_argument("--mode", default="BACKTEST", choices=["BACKTEST", "PRODUCTION"])

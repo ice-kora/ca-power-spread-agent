@@ -37,6 +37,7 @@ from code.data_acquisition.schemas import (  # noqa: E402
     MODE_PRODUCTION,
     asof_from_dict,
     make_decision_cutoff,
+    parse_timestamp,
     target_time_pt_to_utc,
 )
 from code.data_acquisition.validation import (  # noqa: E402
@@ -150,6 +151,13 @@ class TestGFSCollectorOffline(unittest.TestCase):
         self.assertEqual({r["field_name"] for r in dicts}, {"t2m", "wind100", "ssrd"})
         # 全部 eligible（BACKTEST：available_at = published_at = 12Z < cutoff 17:00Z）
         self.assertTrue(all(r["decision_eligible"] for r in dicts))
+        # 三拆：GFS 非 mock、非 NOT_BACKTEST_SAFE → backtest 合格；
+        # production_eligible=False 因采集模式=BACKTEST（历史回放不用于生产）。
+        self.assertTrue(all(r["time_eligible"] for r in dicts))
+        self.assertTrue(all(r["backtest_eligible"] for r in dicts))
+        self.assertTrue(all(r["production_eligible"] is False for r in dicts))
+        self.assertTrue(all(r["is_mock"] is False for r in dicts))
+        self.assertTrue(all(r["not_backtest_safe"] is False for r in dicts))
         # 时间戳口径
         self.assertTrue(all(r["published_at"] == "2026-07-08T12:00:00" for r in dicts))
         self.assertTrue(all(r["decision_cutoff"] == "2026-07-08T17:00:00" for r in dicts))
@@ -180,7 +188,13 @@ class TestGFSCollectorOffline(unittest.TestCase):
         self.assertTrue(res.metadata["is_mock"])
         self.assertTrue(res.metadata["degraded"])
         self.assertGreaterEqual(res.n_records, 72)
-        self.assertEqual(res.n_eligible, res.n_records)
+        # 硬隔离：MOCK 数据 n_eligible=0，逐条 backtest/production/decision 全 FALSE
+        self.assertEqual(res.n_eligible, 0)
+        self.assertTrue(all(r["is_mock"] for r in res.records))
+        self.assertTrue(all(r["time_eligible"] for r in res.records))   # 时间门槛合格
+        self.assertTrue(all(not r["backtest_eligible"] for r in res.records))
+        self.assertTrue(all(not r["production_eligible"] for r in res.records))
+        self.assertTrue(all(not r["decision_eligible"] for r in res.records))
         self.assertTrue(any(v["level"] == "WARNING" and "MOCK" in v["message"]
                             for v in res.validation))
 
@@ -216,6 +230,68 @@ class TestGFSCollectorOffline(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# 2b. GFS cycle 回测可靠性（P0-1 available_at 拆分）
+# ---------------------------------------------------------------------------
+class TestGFSCycleBacktestEligibility(unittest.TestCase):
+    """GFS run 可回测分类：00Z/06Z 有可靠 vintage；12Z/18Z 无法可靠证明 → FALSE。"""
+
+    def _normalized(self, cycle, mode=MODE_BACKTEST, retrieved_at=RETRIEVED):
+        col = GFSWeatherCollector(node="CONTROLX_1_N001", cycle=cycle,
+                                  cache_dir=Path(tempfile.mkdtemp()), mode=mode)
+        start_h = int(cycle[:2])
+        start = datetime.fromisoformat(f"{DECISION_DATE}T{start_h:02d}:00:00")
+        payload = {
+            "hourly": {
+                "time": [(start + timedelta(hours=i)).strftime("%Y-%m-%dT%H:%M:%S")
+                         for i in range(168)],
+                "temperature_2m": [round(20.0 + 0.1 * i, 2) for i in range(168)],
+                "wind_speed_100m": [round(5.0 + 0.01 * i, 2) for i in range(168)],
+                "shortwave_radiation": [round(300.0 + i, 0) for i in range(168)],
+            },
+        }
+        recs = col._normalize(payload, DECISION_DATE, provenance="FIXTURE",
+                              is_mock=False, retrieved_at=retrieved_at)
+        return col, [r.to_dict() for r in recs]
+
+    def test_safe_cycles_backtest_eligible(self):
+        for cyc in ("00Z", "06Z"):
+            col, dicts = self._normalized(cyc)
+            self.assertTrue(col.backtest_eligible_for_cycle(DECISION_DATE),
+                            f"{cyc} 应为可回测 cycle")
+            self.assertTrue(all(r["decision_eligible"] for r in dicts), cyc)
+            self.assertTrue(all(r["backtest_eligible"] for r in dicts), cyc)
+            self.assertTrue(all(r["time_eligible"] for r in dicts), cyc)
+            # available_at 严格晚于 model_run_time（发布延迟为正）
+            for r in dicts:
+                self.assertGreater(parse_timestamp(r["available_at"]),
+                                   parse_timestamp(r["model_run_time"]))
+
+    def test_unsafe_cycles_backtest_ineligible(self):
+        for cyc in ("12Z", "18Z"):
+            col, dicts = self._normalized(cyc)
+            self.assertFalse(col.backtest_eligible_for_cycle(DECISION_DATE),
+                             f"{cyc} 应为不可回测 cycle")
+            self.assertTrue(all(r["available_at"] == "" for r in dicts), cyc)
+            self.assertTrue(all(not r["time_eligible"] for r in dicts), cyc)
+            self.assertTrue(all(not r["backtest_eligible"] for r in dicts), cyc)
+            self.assertTrue(all(not r["decision_eligible"] for r in dicts), cyc)
+
+    def test_12z_production_live_fetch_eligible_when_before_cutoff(self):
+        # ③ PRODUCTION/Shadow：真实当前抓取 + retrieved_at；12Z 在 cutoff 前拉到 → eligible
+        col, dicts = self._normalized("12Z", mode=MODE_PRODUCTION,
+                                      retrieved_at="2026-07-08T16:30:00")
+        self.assertTrue(all(r["time_eligible"] for r in dicts))
+        self.assertTrue(all(r["decision_eligible"] for r in dicts))
+        self.assertTrue(all(r["available_at"] == "2026-07-08T16:30:00" for r in dicts))
+
+    def test_model_run_time_field_written(self):
+        _, dicts = self._normalized("06Z")
+        self.assertTrue(all(r["model_run_time"] == "2026-07-08T06:00:00" for r in dicts))
+        self.assertTrue(all(r["issue_time"] == "2026-07-08T06:00:00" for r in dicts))
+        self.assertTrue(all(r["forecast_run"] == "2026-07-08T06:00Z" for r in dicts))
+
+
+# ---------------------------------------------------------------------------
 # 3. CAISO 采集器（离线路径）
 # ---------------------------------------------------------------------------
 class TestCAISOCollectorOffline(unittest.TestCase):
@@ -232,7 +308,12 @@ class TestCAISOCollectorOffline(unittest.TestCase):
         self.assertEqual({r["field_name"] for r in dicts}, {"load_2da"})
         self.assertEqual({r["node"] for r in dicts}, {"CAISO_TAC"})
         self.assertEqual({r["region"] for r in dicts}, {"SYSTEM"})
-        self.assertTrue(all(r["decision_eligible"] for r in dicts))
+        # NOT_BACKTEST_SAFE 硬隔离：时间合格但 backtest/decision 全 FALSE
+        self.assertTrue(all(r["time_eligible"] for r in dicts))
+        self.assertTrue(all(r["production_eligible"] is False for r in dicts))
+        self.assertTrue(all(r["backtest_eligible"] is False for r in dicts))
+        self.assertTrue(all(r["decision_eligible"] is False for r in dicts))
+        self.assertTrue(all(r["not_backtest_safe"] for r in dicts))
         self.assertTrue(all(r["published_at"] == "2026-07-08T17:00:00" for r in dicts))
         self.assertTrue(all(r["decision_cutoff"] == "2026-07-08T17:00:00" for r in dicts))
         # H1 → 07-09T07:00Z，H24 → 07-10T06:00Z
@@ -247,7 +328,11 @@ class TestCAISOCollectorOffline(unittest.TestCase):
         res = self.col.run(DECISION_DATE, save=False)
         self.assertEqual(res.metadata["provenance"], "MOCK")
         self.assertEqual(res.n_records, 24)
-        self.assertEqual(res.n_eligible, 24)
+        # 硬隔离：MOCK 数据 n_eligible=0
+        self.assertEqual(res.n_eligible, 0)
+        self.assertTrue(all(r["is_mock"] for r in res.records))
+        self.assertTrue(all(not r["backtest_eligible"] for r in res.records))
+        self.assertTrue(all(not r["production_eligible"] for r in res.records))
         self.assertTrue(any(v["level"] == "WARNING" and "MOCK" in v["message"]
                             for v in res.validation))
 
@@ -258,6 +343,10 @@ class TestCAISOCollectorOffline(unittest.TestCase):
         self.assertEqual(res.metadata["provenance"], "CACHE")
         self.assertFalse(res.metadata["is_mock"])
         self.assertEqual(res.n_records, 24)
+        # LIVE 缓存数据非 mock，但源 NOT_BACKTEST_SAFE → 回测不可用
+        self.assertEqual(res.n_eligible, 0)
+        self.assertTrue(all(r["time_eligible"] for r in res.records))
+        self.assertTrue(all(not r["backtest_eligible"] for r in res.records))
 
     def test_not_backtest_safe_flag(self):
         self.assertTrue(self.col.not_backtest_safe)
@@ -266,6 +355,10 @@ class TestCAISOCollectorOffline(unittest.TestCase):
         self.assertTrue(res.metadata["not_backtest_safe"])
         self.assertTrue(any(v["level"] == "WARNING" and "not_backtest_safe" in v["message"]
                             for v in res.validation))
+        # 逐条记录携带 not_backtest_safe 标记，且永不 backtest_eligible
+        self.assertTrue(all(r["not_backtest_safe"] for r in res.records))
+        self.assertTrue(all(not r["backtest_eligible"] for r in res.records))
+        self.assertTrue(all(r["time_eligible"] for r in res.records))
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +398,30 @@ class TestValidation(unittest.TestCase):
                                    {"is_mock": False, "not_backtest_safe": False})
         self.assertTrue(any("decision_eligible 漂移" in v["message"] and v["level"] == "ERROR"
                             for v in errs))
+
+    def test_hard_rule_mock_declared_eligible_flagged(self):
+        # R7：is_mock=True 却声明 backtest_eligible/production_eligible → ERROR
+        dicts = self._gfs_dicts()
+        for r in dicts:
+            r["is_mock"] = True
+            r["backtest_eligible"] = True
+            r["production_eligible"] = True
+        errs = validate_collection(self.gfs, dicts, DECISION_DATE,
+                                   {"is_mock": True, "not_backtest_safe": False})
+        self.assertTrue(any("硬规则 R7" in v["message"] and v["level"] == "ERROR"
+                            for v in errs), errs)
+        self.assertTrue(any("backtest_eligible 漂移" in v["message"] for v in errs))
+
+    def test_hard_rule_not_backtest_safe_declared_eligible_flagged(self):
+        # R8：not_backtest_safe=True 却声明 backtest_eligible → ERROR
+        dicts = self._gfs_dicts()
+        for r in dicts:
+            r["not_backtest_safe"] = True
+            r["backtest_eligible"] = True
+        errs = validate_collection(self.gfs, dicts, DECISION_DATE,
+                                   {"is_mock": False, "not_backtest_safe": True})
+        self.assertTrue(any("硬规则 R8" in v["message"] and v["level"] == "ERROR"
+                            for v in errs), errs)
 
     def test_missing_hours_warning(self):
         dicts = self._gfs_dicts()
@@ -383,7 +500,10 @@ class TestLiveSources(unittest.TestCase):
         res = col.run(DECISION_DATE, save=True)
         self.assertEqual(res.metadata["provenance"], "LIVE")
         self.assertEqual(res.n_records, 24)
-        self.assertEqual(res.n_eligible, 24)
+        # NOT_BACKTEST_SAFE 硬隔离：时间合格但不参与严格回测
+        self.assertEqual(res.n_eligible, 0)
+        self.assertTrue(all(r["time_eligible"] for r in res.records))
+        self.assertTrue(all(not r["backtest_eligible"] for r in res.records))
         self.assertFalse(any(v["level"] == "ERROR" for v in res.validation))
         self.assertFalse(any(r["value"] is None for r in res.records))
         # 负荷合理性

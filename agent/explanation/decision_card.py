@@ -22,9 +22,20 @@ Decision Card（结构化决策卡片）—— V0.2 白盒交易决策 Agent · 
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from code.market_rules import (  # noqa: E402
+    CURRENT_MARKET_RULE_VERSION,
+    MARKET_RULE_VERSIONS,
+    normalize_market_rule_version,
+)
 
 # ---------------------------------------------------------------------------
 # 风险门状态（与 risk_gate_design.md 的 reason_code 对齐）
@@ -80,11 +91,25 @@ class DecisionCard:
     final_recommendation: str = ""
     # 人工确认提示（默认）
     human_confirmation_note: str = "最终执行由交易员确认"
+    # 市场规则版本（DAME/EDAM 标记，Provenance MVP；本轮仅保存不适配）
+    market_rule_version: str = CURRENT_MARKET_RULE_VERSION
+
+    # ------------------------------------------------------------------
+    @property
+    def has_demo_mock(self) -> bool:
+        """卡片是否含 MOCK 演示证据（DATA NOT ELIGIBLE / DEMO MOCK 提示用）。"""
+        ev_list = (self.agent_evidence or {}).get("evidence_list", []) or []
+        return any(
+            bool(ev.get("is_mock")) or str(ev.get("provenance", "")).upper() == "MOCK"
+            for ev in ev_list
+        )
 
     # ------------------------------------------------------------------
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["risk_gate"] = self.risk_gate.to_dict()
+        d["market_rule_version"] = normalize_market_rule_version(self.market_rule_version)
+        d["has_demo_mock"] = bool(self.has_demo_mock)
         return d
 
     @staticmethod
@@ -111,6 +136,9 @@ class DecisionCard:
             final_recommendation=str(raw.get("final_recommendation", "")),
             human_confirmation_note=str(
                 raw.get("human_confirmation_note", "最终执行由交易员确认")
+            ),
+            market_rule_version=str(
+                raw.get("market_rule_version", CURRENT_MARKET_RULE_VERSION)
             ),
         )
 
@@ -139,22 +167,40 @@ def format_card_markdown(card: DecisionCard) -> str:
 
     # Evidence 块（无真实源时压缩为一行摘要，细节保留在 JSON）
     ev_list = card.agent_evidence.get("evidence_list", []) if card.agent_evidence else []
-    if ev_list:
+    mock_evs = [
+        ev for ev in ev_list
+        if bool(ev.get("is_mock")) or str(ev.get("provenance", "")).upper() == "MOCK"
+    ]
+    real_evs = [ev for ev in ev_list if ev not in mock_evs]
+
+    # MOCK 硬隔离：明确横幅，不能悄悄参与
+    if mock_evs:
+        lines.append(
+            "DATA NOT ELIGIBLE / DEMO MOCK：本卡片含 %d 条 MOCK 演示证据，"
+            "禁止用于真实交易建议（仅测试/UI 演示/单测）。" % len(mock_evs)
+        )
+        lines.append(
+            "  MOCK 来源: %s" % "、".join(
+                {str(ev.get("source") or ev.get("event_type") or "?") for ev in mock_evs}
+            )
+        )
+
+    if real_evs:
         all_uncertain = all(
-            ev.get("directional_effect", "UNCERTAIN") == "UNCERTAIN" for ev in ev_list
+            ev.get("directional_effect", "UNCERTAIN") == "UNCERTAIN" for ev in real_evs
         )
         if all_uncertain:
-            etypes = sorted({ev.get("event_type", "OTHER") for ev in ev_list})
+            etypes = sorted({ev.get("event_type", "OTHER") for ev in real_evs})
             lines.append(
                 "Evidence: 全部 UNCERTAIN（{} 类数据源未接入：{}）；"
-                "未发现可核实的外部事件".format(len(ev_list), ", ".join(etypes))
+                "未发现可核实的外部事件".format(len(real_evs), ", ".join(etypes))
             )
         else:
             ev_lines = [
                 f"[{ev.get('directional_effect','UNCERTAIN')}] "
                 f"{ev.get('event_type','OTHER')}({ev.get('source') or '未接入'}): "
                 f"{ev.get('summary','')[:70]}"
-                for ev in ev_list
+                for ev in real_evs
             ]
             lines.append("Evidence: " + " | ".join(ev_lines))
     else:
@@ -173,6 +219,8 @@ def format_card_markdown(card: DecisionCard) -> str:
 
     lines.append(f"建议: {card.final_recommendation}")
     lines.append(f"注意: {card.human_confirmation_note}")
+    lines.append(f"市场规则: {normalize_market_rule_version(card.market_rule_version)}"
+                 f"（DAME/EDAM 前 legacy DAM 口径；本轮仅标记不适配）")
     return "\n".join(lines)
 
 

@@ -21,12 +21,14 @@ if str(REPO_ROOT) not in sys.path:
 from code.data_acquisition.schemas import (
     MODE_BACKTEST,
     MODE_PRODUCTION,
+    SOURCE_TYPES,
     AsOfRecord,
     FeatureSnapshot,
     assert_no_post_decision,
     asof_from_dict,
     ensure_asof_dict,
     gate_asof_records,
+    infer_source_type,
     lead_hours_of,
     make_decision_cutoff,
     parse_timestamp,
@@ -37,28 +39,35 @@ from code.data_acquisition.schemas import (
     validate_asof_record,
     validate_snapshot,
 )
+from code.market_rules import (
+    CURRENT_MARKET_RULE_VERSION,
+    MARKET_RULE_VERSION_POST_DAME_EDAM_2026,
+    MARKET_RULE_VERSIONS,
+    normalize_market_rule_version,
+)
 
 
 def _gfs_backtest_record(decision_date="2026-07-08", **overrides):
-    """GFS 回测样例记录：published_at = D 12Z UTC（vintage），retrieved_at = 今天。"""
+    """GFS 回测样例记录：06Z run（可回测 cycle），published_at = init + 6h 保守上界。"""
     d = {
         "source": "NCEP_GFS_025_via_OpenMeteo",
         "field_name": "t2m",
-        "forecast_run": "2026-07-08T12:00Z",
-        "issue_time": "2026-07-08T12:00:00",
-        "published_at": "2026-07-08T12:00:00",
-        "retrieved_at": "2026-08-09T00:00:00",   # 今天的墙钟，仅审计
+        "forecast_run": "2026-07-08T06:00Z",
+        "model_run_time": "2026-07-08T06:00:00",   # 起报时刻 = initialization_time
+        "issue_time": "2026-07-08T06:00:00",
+        "published_at": "2026-07-08T12:00:00",     # init + 6h 保守上界（发布延迟模型）
+        "retrieved_at": "2026-08-09T00:00:00",     # 今天的墙钟，仅审计
         "target_time": target_time_pt_to_utc("2026-07-09", 15),
         "node": "CONTROLX_1_N001",
         "value": 27.9,
         "decision_cutoff": make_decision_cutoff(decision_date),
-        "raw_source_id": "run=2026-07-08T12:00",
+        "raw_source_id": "run=2026-07-08T06:00",
         "mode": MODE_BACKTEST,
     }
     d.update(overrides)
     rec = asof_from_dict(d)
     if "available_at" not in overrides:
-        # 未显式给 available_at → 按 mode 解析（默认回测 vintage 语义）
+        # 未显式给 available_at → 按 mode 解析（回测 = 历史 vintage）
         rec.available_at = resolve_available_at(
             rec.published_at, rec.retrieved_at, mode=rec.mode or MODE_BACKTEST) or ""
     return rec
@@ -110,6 +119,108 @@ class TestDecisionEligibility(unittest.TestCase):
         self.assertFalse(rec.is_usable)
         errs = validate_asof_record(rec.to_dict())
         self.assertTrue(any("value" in e for e in errs))
+
+
+class TestEligibilityHardRules(unittest.TestCase):
+    """R7/R8 硬隔离：MOCK / NOT_BACKTEST_SAFE 永不进入回测/生产可用。"""
+
+    def test_mock_never_backtest_or_production_eligible(self):
+        # 时间合格（available_at <= cutoff）但 is_mock=True → 三个可用门槛全 FALSE
+        rec = _gfs_backtest_record(is_mock=True)
+        self.assertTrue(rec.time_eligible)
+        self.assertFalse(rec.backtest_eligible)
+        self.assertFalse(rec.production_eligible)
+        self.assertFalse(rec.decision_eligible)
+        self.assertFalse(rec.is_usable)
+
+    def test_mock_blocks_even_if_before_cutoff(self):
+        # 硬规则：即便 available_at 远早于 cutoff 也不能改变 is_mock 的隔离
+        rec = _gfs_backtest_record(is_mock=True, available_at="2026-07-07T00:00:00")
+        self.assertTrue(rec.time_eligible)
+        self.assertFalse(rec.backtest_eligible)
+        self.assertFalse(rec.production_eligible)
+        self.assertFalse(rec.decision_eligible)
+
+    def test_not_backtest_safe_blocks_backtest_only(self):
+        # not_backtest_safe=True 只禁回测：backtest_eligible=False；生产仍可用
+        rec = _gfs_backtest_record(not_backtest_safe=True)
+        self.assertTrue(rec.time_eligible)
+        self.assertFalse(rec.backtest_eligible)
+        self.assertFalse(rec.decision_eligible)   # 空/回测模式下 decision = backtest_eligible
+
+    def test_not_backtest_safe_production_allowed(self):
+        # 生产采集：retrieved 早于 cutoff → time 合格；not_backtest_safe 不阻塞 production
+        rec = _gfs_backtest_record(
+            not_backtest_safe=True, mode=MODE_PRODUCTION,
+            retrieved_at="2026-07-08T09:00:00",   # 生产口径 available_at = max(12Z, 09:00)=12Z
+        )
+        self.assertTrue(rec.time_eligible)
+        self.assertFalse(rec.backtest_eligible)
+        self.assertTrue(rec.production_eligible)
+        self.assertTrue(rec.decision_eligible)
+
+    def test_available_after_cutoff_rejected_all(self):
+        # available_at > cutoff → 三个门槛全 FALSE
+        rec = _gfs_backtest_record(available_at="2026-07-08T18:00:00")
+        self.assertFalse(rec.time_eligible)
+        self.assertFalse(rec.backtest_eligible)
+        self.assertFalse(rec.production_eligible)
+        self.assertFalse(rec.decision_eligible)
+
+    def test_validate_catches_mock_eligibility_drift(self):
+        # 存储声明 is_mock=True 却 backtest_eligible=True → 校验报硬规则违规
+        bad = _gfs_backtest_record(is_mock=True).to_dict()
+        bad["backtest_eligible"] = True
+        bad["production_eligible"] = True
+        bad["decision_eligible"] = True
+        errs = validate_asof_record(bad)
+        self.assertTrue(any("硬规则 R7" in e for e in errs), errs)
+        self.assertTrue(any("漂移" in e for e in errs), errs)
+
+    def test_validate_catches_not_backtest_safe_drift(self):
+        bad = _gfs_backtest_record(not_backtest_safe=True).to_dict()
+        bad["backtest_eligible"] = True
+        bad["decision_eligible"] = True
+        errs = validate_asof_record(bad)
+        self.assertTrue(any("硬规则 R8" in e for e in errs), errs)
+        self.assertTrue(any("漂移" in e for e in errs), errs)
+
+    def test_gate_excludes_mock_to_post(self):
+        mock_rec = _gfs_backtest_record(is_mock=True, raw_source_id="mock")
+        ok_rec = _gfs_backtest_record(raw_source_id="real")
+        eligible, post = gate_asof_records([mock_rec, ok_rec])
+        self.assertEqual(len(eligible), 1)
+        self.assertEqual(len(post), 1)
+        self.assertEqual(post[0].raw_source_id, "mock")
+        self.assertEqual(eligible[0].raw_source_id, "real")
+
+    def test_assert_no_post_decision_blocks_mock(self):
+        mock_rec = _gfs_backtest_record(is_mock=True)
+        with self.assertRaises(RuntimeError):
+            assert_no_post_decision([mock_rec])
+
+    def test_snapshot_from_mock_record_flagged(self):
+        rec = _gfs_backtest_record(is_mock=True)
+        snap = snapshot_from_asof_record(
+            rec, "2026-07-08", "2026-07-09", 15, "t2m", created_at="2026-07-08T10:00:00")
+        d = snap.to_dict()
+        self.assertTrue(d["is_mock"])
+        self.assertTrue(d["time_eligible"])      # 时间门槛仍合格（R1），但 MOCK 硬隔离
+        self.assertFalse(d["backtest_eligible"])
+        self.assertFalse(d["production_eligible"])
+        self.assertFalse(d["decision_eligible"])
+        self.assertFalse(snap.is_usable)
+        self.assertEqual(validate_snapshot(d), [])
+
+    def test_snapshot_validate_catches_mock_eligible(self):
+        # 快照声明 is_mock=True 却 backtest_eligible=True → 校验报硬规则
+        bad = _gfs_backtest_record(is_mock=True)
+        d = snapshot_from_asof_record(
+            bad, "2026-07-08", "2026-07-09", 15, "t2m", created_at="2026-07-08T10:00:00").to_dict()
+        d["backtest_eligible"] = True
+        d["production_eligible"] = True
+        errs = validate_snapshot(d)
+        self.assertTrue(any("硬规则 R7" in e for e in errs), errs)
 
 
 class TestTimeConversion(unittest.TestCase):
@@ -184,6 +295,46 @@ class TestModeAvailability(unittest.TestCase):
     def test_production_missing_any_ineligible(self):
         self.assertIsNone(resolve_available_at("2026-07-08T12:00:00", None, MODE_PRODUCTION))
         self.assertIsNone(resolve_available_at(None, "2026-07-08T09:00:00", MODE_PRODUCTION))
+
+
+class TestGFSAvailableAtSplit(unittest.TestCase):
+    """P0-1：五个时间概念拆分 + Time Gate 只判 available_at + 回测可靠性（R9/R10）。"""
+
+    def test_available_at_strictly_after_model_run_time(self):
+        # GFS 发布延迟为正：available_at(12:00) > model_run_time(06:00)，绝不相等
+        rec = _gfs_backtest_record()
+        self.assertEqual(rec.model_run_time, "2026-07-08T06:00:00")
+        self.assertGreater(rec.parsed_available_at, rec.parsed_model_run_time)
+        self.assertTrue(rec.backtest_eligible)
+
+    def test_init_time_must_not_be_available_at(self):
+        # 回归保护：把 available_at 设成 model_run_time（原 bug）→ backtest_eligible=False
+        rec = _gfs_backtest_record(model_run_time="2026-07-08T06:00:00",
+                                   available_at="2026-07-08T06:00:00")
+        self.assertTrue(rec.time_eligible)          # 时间上 06:00 <= cutoff（纯时间门槛）
+        self.assertFalse(rec.backtest_eligible)     # 但 init ≠ 可用时刻 → 不可回测
+        self.assertFalse(rec.decision_eligible)
+
+    def test_validate_catches_init_as_available(self):
+        # R9 校验：BACKTEST available_at <= model_run_time → validate 报错
+        d = _gfs_backtest_record(model_run_time="2026-07-08T06:00:00",
+                                 available_at="2026-07-08T06:00:00").to_dict()
+        errs = validate_asof_record(d)
+        self.assertTrue(any("严格晚于 model_run_time" in e for e in errs), errs)
+
+    def test_unresolved_available_at_ineligible(self):
+        # R10：无可靠 vintage → available_at 空 → 不进历史决策
+        rec = _gfs_backtest_record(available_at="")
+        self.assertFalse(rec.time_eligible)
+        self.assertFalse(rec.backtest_eligible)
+        self.assertFalse(rec.decision_eligible)
+        self.assertIn("available_at", rec.missing_time_fields)
+
+    def test_model_run_time_roundtrip(self):
+        rec = _gfs_backtest_record()
+        d2 = ensure_asof_dict(asof_from_dict(rec.to_dict()).to_dict())
+        self.assertEqual(d2["model_run_time"], "2026-07-08T06:00:00")
+        self.assertEqual(d2["backtest_eligible"], rec.backtest_eligible)
 
 
 class TestGate(unittest.TestCase):
@@ -276,6 +427,92 @@ class TestNormalize(unittest.TestCase):
         errs = validate_asof_record({"source": "x"})
         self.assertTrue(any("缺少字段" in e for e in errs))
         self.assertTrue(any("available_at" in e for e in errs))
+
+
+class TestProvenanceFields(unittest.TestCase):
+    """Provenance MVP：source_type / is_mock / raw_source_id / market_rule_version。"""
+
+    # ---- source_type 推断 -------------------------------------------------
+    def test_infer_source_type_by_field(self):
+        self.assertEqual(infer_source_type("src", "da_lmp"), "PRICE")
+        self.assertEqual(infer_source_type("src", "rtpd_price"), "PRICE")
+        self.assertEqual(infer_source_type("src", "darptd_return"), "PRICE")
+        self.assertEqual(infer_source_type("src", "load_2da"), "LOAD")
+        self.assertEqual(infer_source_type("src", "t2m"), "WEATHER")
+        self.assertEqual(infer_source_type("src", "ssrd"), "WEATHER")
+        self.assertEqual(infer_source_type("src", "wind100"), "WEATHER")
+        self.assertEqual(infer_source_type("CAISO_OASIS_SLD_FCST", "load_2da"), "LOAD")
+        self.assertEqual(infer_source_type("src", "holiday"), "STATIC")
+        self.assertEqual(infer_source_type("src", "rolling_std30"), "DERIVED")
+        self.assertEqual(infer_source_type("src", "spread_lag1"), "PRICE")  # spread 优先归价格
+        self.assertEqual(infer_source_type("weird", "zzz_unknown"), "UNKNOWN")
+
+    def test_source_type_auto_inferred_on_record(self):
+        rec = _gfs_backtest_record()   # field_name=t2m
+        self.assertEqual(rec.source_type, "WEATHER")
+
+    def test_source_type_explicit_wins(self):
+        rec = _gfs_backtest_record(source_type="LOAD")
+        self.assertEqual(rec.source_type, "LOAD")
+
+    def test_source_type_illegal_replaced(self):
+        rec = _gfs_backtest_record(source_type="HACK").normalize()
+        self.assertIn(rec.source_type, SOURCE_TYPES)
+        errs = validate_asof_record(rec.to_dict())
+        self.assertFalse(any("source_type" in e for e in errs))  # normalize 已规约
+
+    def test_snapshot_carries_source_type(self):
+        rec = _gfs_backtest_record()
+        snap = snapshot_from_asof_record(
+            rec, "2026-07-08", "2026-07-09", 15, "t2m", created_at="2026-07-08T10:00:00")
+        self.assertEqual(snap.source_type, "WEATHER")
+
+    # ---- market_rule_version ----------------------------------------------
+    def test_market_rule_default(self):
+        rec = _gfs_backtest_record()
+        self.assertEqual(rec.market_rule_version, CURRENT_MARKET_RULE_VERSION)
+        self.assertIn(rec.market_rule_version, MARKET_RULE_VERSIONS)
+
+    def test_market_rule_normalize_unknown_falls_back(self):
+        rec = _gfs_backtest_record(market_rule_version="FUTURE_V99").normalize()
+        self.assertEqual(rec.market_rule_version, CURRENT_MARKET_RULE_VERSION)
+        self.assertEqual(normalize_market_rule_version("POST_DAME_EDAM_2026"),
+                         MARKET_RULE_VERSION_POST_DAME_EDAM_2026)
+        self.assertEqual(normalize_market_rule_version(""), CURRENT_MARKET_RULE_VERSION)
+
+    def test_market_rule_in_to_dict_and_snapshot(self):
+        rec = _gfs_backtest_record(market_rule_version="POST_DAME_EDAM_2026")
+        self.assertEqual(rec.to_dict()["market_rule_version"], "POST_DAME_EDAM_2026")
+        snap = snapshot_from_asof_record(
+            rec, "2026-07-08", "2026-07-09", 15, "t2m", created_at="2026-07-08T10:00:00")
+        self.assertEqual(snap.market_rule_version, "POST_DAME_EDAM_2026")
+        self.assertEqual(validate_snapshot(snap.to_dict()), [])
+
+    # ---- is_mock / raw_source_id 溯源 -------------------------------------
+    def test_provenance_trace_fields_present(self):
+        rec = _gfs_backtest_record(raw_source_id="run=2026-07-08T12:00")
+        d = rec.to_dict()
+        for k in ("source", "source_type", "is_mock", "raw_source_id", "target_time",
+                  "available_at", "retrieved_at", "time_eligible",
+                  "backtest_eligible", "production_eligible", "value"):
+            self.assertIn(k, d, f"provenance 字段 {k} 缺失")
+
+    def test_snapshot_provenance_trace_fields_present(self):
+        snap = snapshot_from_asof_record(
+            _gfs_backtest_record(), "2026-07-08", "2026-07-09", 15, "t2m",
+            created_at="2026-07-08T10:00:00").to_dict()
+        for k in ("source", "source_type", "is_mock", "raw_source_id", "target_time",
+                  "available_at", "retrieved_at", "time_eligible",
+                  "backtest_eligible", "production_eligible", "feature_value"):
+            self.assertIn(k, snap, f"snapshot provenance 字段 {k} 缺失")
+
+    def test_validate_reports_bad_source_type_and_mrv(self):
+        bad = _gfs_backtest_record().to_dict()
+        bad["source_type"] = "NOPE"
+        bad["market_rule_version"] = "NOPE"
+        errs = validate_asof_record(bad)
+        self.assertTrue(any("source_type" in e for e in errs), errs)
+        self.assertTrue(any("market_rule_version" in e for e in errs), errs)
 
 
 if __name__ == "__main__":

@@ -32,10 +32,11 @@
 - **端点**：`https://single-runs-api.open-meteo.com/v1/forecast`
   参数 `models=gfs_global`（NCEP GFS 0.25°）、`run=YYYY-MM-DDTHH:00`、`timezone=UTC`、
   `wind_speed_unit=ms`，逐节点经纬度（`节点位置.xlsx`）。
-- **as-of 语义**：决策日 D 取 **D 12Z run（12:00 UTC）** 作为 as-issued 历史预报
-  （= forecast_issue_time），目标交付日 T = D+1。`published_at = 12:00 UTC`，
-  `decision_cutoff = D 10:00 PT → UTC`（夏 17:00 / 冬 18:00 UTC），
-  `published_at < decision_cutoff` 恒成立 → `decision_eligible=True`。
+- **as-of 语义（P0-1 修正）**：决策日 D 取 **D 06Z run（06:00 UTC，默认；00Z/06Z 可回测）**
+  作为 as-issued 历史预报（= forecast_issue_time），目标交付日 T = D+1。
+  `published_at = init + 发布延迟模型`（BACKTEST 保守上界 +6h → 12:00 UTC；PRODUCTION 典型 +4h），
+  **绝不把 init 当 available_at**。`decision_cutoff = D 10:00 PT → UTC`（夏 17:00 / 冬 18:00 UTC）。
+  12Z/18Z 无法可靠证明发布早于 cutoff → `backtest_eligible=FALSE`（详见 asof_schema_design.md §2.3）。
 - **变量映射**（对齐项目 canonical）：`temperature_2m → t2m(°C)`、
   `wind_speed_100m → wind100(m/s)`、`shortwave_radiation → ssrd(W/m²)`。
 - **target_time 对齐项目 hour∈1..24（PT）约定**：`target_time_pt_to_utc(T, h)`，
@@ -133,9 +134,9 @@ run(query_date)
 
 | 字段 | GFS | CAISO |
 |---|---|---|
-| `forecast_run` / `issue_time` | `2026-07-08T12:00Z` / `2026-07-08T12:00:00` | `DAM-2026-07-09` / `2026-07-08T17:00:00` |
-| `published_at` | D 12Z（12:00 UTC） | D 10:00 PT→UTC（== cutoff，保守上界） |
-| `available_at` | 按模式：BACKTEST=vintage=12Z；PRODUCTION=max(pub,ret) | 同左（BACKTEST=17:00Z） |
+| `forecast_run` / `issue_time` / `model_run_time` | `2026-07-08T06:00Z` / `2026-07-08T06:00:00` / `2026-07-08T06:00:00`（06Z） | `DAM-2026-07-09` / `2026-07-08T17:00:00` |
+| `published_at` | D 06Z init + 6h 保守上界（12:00 UTC）；PRODUCTION = init+4h 典型 | D 10:00 PT→UTC（== cutoff，保守上界） |
+| `available_at` | 按模式：BACKTEST = init+6h（仅 00Z/06Z）；12Z/18Z = None（不可回测）；PRODUCTION=max(pub,ret) | 同左（BACKTEST=17:00Z） |
 | `retrieved_at` | 本次采集墙钟（UTC naive） | 同左 |
 | `decision_cutoff` | `make_decision_cutoff(D)` | 同左 |
 | `decision_eligible` | **程序计算** `available_at <= decision_cutoff` | 同左 |

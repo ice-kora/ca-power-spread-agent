@@ -44,6 +44,11 @@ from code.risk_gate.evidence_adapter import (
     filter_eligible_evidence,
 )
 from code.risk_gate.gate import GateVerdict, RiskGate
+from code.market_rules import (  # noqa: E402
+    CURRENT_MARKET_RULE_VERSION,
+    MARKET_RULE_VERSIONS,
+    normalize_market_rule_version,
+)
 
 # ---------------------------------------------------------------------------
 # 配置
@@ -58,6 +63,7 @@ class RuleEngineConfig:
     reject_on_warning: bool = False    # RiskGate WARNING 是否升级为 NO_TRADE（默认不拦）
     require_direction_probability: bool = False  # 是否要求 prob_positive/prob_negative 齐备
     risk_gate_config: RiskGateConfig = field(default_factory=lambda: DEFAULT_RISK_GATE_CONFIG)
+    market_rule_version: str = CURRENT_MARKET_RULE_VERSION  # DAME/EDAM 标记（本轮仅保存）
     changelog: tuple = (
         "0.2: 独立 Rule Engine；消费 RiskGate verdict + eligible Evidence；规则可读可配置。",
         "0.1: backtest.py 内置三态策略（DECISION_CFG）——本次升级为独立白盒模块。",
@@ -82,6 +88,7 @@ class Decision:
     risk_reasons: List[str] = field(default_factory=list)   # Gate 的 reason_code
     evidence_used: Dict[str, Any] = field(default_factory=dict)  # eligible 证据汇总
     version: str = "0.2"
+    market_rule_version: str = CURRENT_MARKET_RULE_VERSION  # 决策上下文规则版本标记
 
     @property
     def is_trade(self) -> bool:
@@ -99,6 +106,7 @@ class Decision:
             "risk_reasons": list(self.risk_reasons),
             "evidence_used": dict(self.evidence_used),
             "version": self.version,
+            "market_rule_version": normalize_market_rule_version(self.market_rule_version),
         }
 
 
@@ -178,6 +186,7 @@ class RuleEngine:
                 risk_reasons=risk_reasons,
                 evidence_used=ev_ctx,
                 version=self.cfg.version,
+                market_rule_version=self.cfg.market_rule_version,
             )
 
         er = _num(pred.get("expected_return"))
@@ -230,6 +239,7 @@ class RuleEngine:
                 risk_reasons=risk_reasons,
                 evidence_used=ev_ctx,
                 version=self.cfg.version,
+                market_rule_version=self.cfg.market_rule_version,
             )
         if er < 0:
             return Decision(
@@ -243,6 +253,7 @@ class RuleEngine:
                 risk_reasons=risk_reasons,
                 evidence_used=ev_ctx,
                 version=self.cfg.version,
+                market_rule_version=self.cfg.market_rule_version,
             )
 
         # R-I：无明确方向

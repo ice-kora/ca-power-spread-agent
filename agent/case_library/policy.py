@@ -49,6 +49,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from agent.case_library.case import Case  # noqa: E402
+from code.market_rules import CURRENT_MARKET_RULE_VERSION  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Case 类型常量（单一事实来源）
@@ -105,6 +106,8 @@ class DecisionRecord:
     risk_gate_decision: str = ""              # PASS / WARNING / REJECT
     risk_gate_reasons: List[str] = field(default_factory=list)
     extras: Dict[str, Any] = field(default_factory=dict)  # 附加 as-of 快照等
+    # 市场规则版本标记（Post-trade Review 记录：这笔是在哪套规则下做的）
+    market_rule_version: str = CURRENT_MARKET_RULE_VERSION
 
     # -- 派生 ----------------------------------------------------------
     @property
@@ -347,6 +350,7 @@ def build_case(
         case_created_at=available_at,
         case_available_at=available_at,
         review_completed_at="",  # 未复核
+        market_rule_version=rec.market_rule_version,
     )
 
 

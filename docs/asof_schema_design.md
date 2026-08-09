@@ -11,10 +11,19 @@
 任何 Forecast / Evidence / Feature 不能只存 `target_time + value`，必须保存完整 **vintage**
 （来源、发布时间、可用时点），否则无法证明交易决策时该信息可见。
 
-- **核心铁律**：`available_at <= decision_cutoff` ⇒ `decision_eligible = TRUE`；
+- **核心铁律**：`available_at <= decision_cutoff` ⇒ `time_eligible = TRUE`；
   否则只能进 **Post-trade Review**。
 - **保守规则**：`available_at / decision_cutoff / target_time / value` 任一缺失或不可解析
-  ⇒ 该记录**不可用**（`decision_eligible = FALSE`）。
+  ⇒ 该记录**不可用**（`time_eligible = FALSE`）。
+- **eligibility 三拆**（Agent B，MOCK / NOT_BACKTEST_SAFE 硬隔离）：
+  - `time_eligible`       = 纯时间门槛（`available_at <= decision_cutoff`）
+  - `backtest_eligible`   = `time_eligible` 且 非 MOCK 且 非 NOT_BACKTEST_SAFE
+  - `production_eligible` = `time_eligible` 且 非 MOCK
+  - `decision_eligible`   = 模式对应单一门槛（PRODUCTION→production_eligible；
+                            其余 BACKTEST/空 → backtest_eligible，最保守）
+  - **硬规则 R7**：`is_mock=True` ⇒ `backtest_eligible=FALSE` 且 `production_eligible=FALSE`，
+    即便 `available_at <= cutoff` 也不能改变（MOCK 只能用于测试/UI 演示/单元测试）。
+  - **硬规则 R8**：`not_backtest_safe=True` ⇒ `backtest_eligible=FALSE`（不禁 production）。
 - **两套采集模式**：
   - **Historical Backtest Mode**：复原"某历史交易日 D 10:00 PT 前当时能知道什么"，
     用**历史 vintage**（如 GFS 档案 run 初始时刻）作 `available_at`；**禁止**用今天的检索时刻
@@ -69,10 +78,11 @@
 | `asof_id` | str | 是 | 唯一主键：`ASOF-{source}-{raw_source_id}-{target_time}`（缺省自动生成） | 采集时生成，防重复落库 |
 | `source` | str | 是 | 数据源标识，如 `CAISO_OASIS_DA_LMP`、`NCEP_GFS_025_via_OpenMeteo`、`load_2da_csv` | 采集器声明；登记表见 §5 |
 | `field_name` | str | 是 | 变量名（与 canonical 特征名对齐）：`da_lmp / rtpd_lmp / darptd_return / t2m / ssrd / wind100 / load_2da / load_actual` | 采集映射 |
-| `forecast_run` | str | 否 | 预报 run 标识：GFS `2026-07-08T12:00Z`、2DA 批号等；**实测/实际值留空** | 源响应 header / API 参数 |
-| `issue_time` | str | 否 | 数据产品生成/模型初始化时刻（UTC naive）；预报必须给；实际可为空 | 源元数据（GFS run 初始时刻等） |
-| `published_at` | str | **是** | 源方**公开发布**时刻（交易员最早可得，UTC naive） | 源 header / 排程表（§5 矩阵） |
-| `available_at` | str | **是** | **本项目采用的可用于决策的 as-of 时点**（UTC naive）。回测=历史 `published_at`（vintage）；生产=`max(published_at, retrieved_at)` | 由 `resolve_available_at()` 按模式计算 |
+| `forecast_run` | str | 否 | 预报 run 标识：GFS `2026-07-08T06:00Z`、2DA 批号等；**实测/实际值留空** | 源响应 header / API 参数 |
+| `model_run_time` | str | 否 | 模型起报时刻（run 起始 = `initialization_time`，UTC naive）。GFS 必填；实际值留空 | GFS run 参数（`run=...T06:00`） |
+| `issue_time` | str | 否 | 数据产品生成/模型初始化时刻（UTC naive）= `model_run_time`；预报必须给；实际可为空 | 源元数据（GFS run 初始时刻等） |
+| `published_at` | str | **是** | 源方**公开发布**时刻（交易员最早可得，UTC naive）。GFS = init + 发布延迟模型（PRODUCTION +4h / BACKTEST +6h 上界）；CAISO 负荷 = D 10:00 PT（== cutoff，保守上界） | 源 header / 排程表（§3 矩阵） |
+| `available_at` | str | **是** | **本项目采用的可用于决策的 as-of 时点**（UTC naive）。回测=历史 `published_at`（vintage，GFS 00Z/06Z）；无可靠 vintage（GFS 12Z/18Z）→ `None`；生产=`max(published_at, retrieved_at)` | 由 `resolve_available_at()` 按模式计算 |
 | `retrieved_at` | str | **是** | 我方采集/落库时刻（UTC naive）。**仅审计**；回测中绝不用它主张可用 | 采集器墙钟 |
 | `target_time` | str | 是 | 该值指向的交付时刻（UTC naive）：`target_date (h−1):00 PT→UTC` | §1.3 映射 |
 | `lead_hours` | float | 计算 | `(target_time − available_at)` 小时；不可算为 `None` | 派生 |
@@ -82,7 +92,13 @@
 | `longitude` | float | 否 | 节点经度（可选，节点级） | `节点位置.xlsx` |
 | `value` | float | 是 | 数值：价格 `$/MWh`、负荷 `MW`、温度 `°C`、辐射 `W/m²`、风速 `m/s`；缺失为 `NaN` | 源响应 |
 | `decision_cutoff` | str | 是 | 该记录对应的决策截止（UTC naive）：`D 10:00 PT → UTC` | `make_decision_cutoff()` |
-| `decision_eligible` | bool | **计算** | 强制规则 R1/R2 的结果；**禁止人工/LLM 改写** | `property` 程序计算 |
+| `source_type` | str | 否 | 源语义类别：`PRICE / LOAD / WEATHER / EVENT / STATIC / DERIVED / UNKNOWN`（显式优先，否则启发式推断） | `infer_source_type()` |
+| `is_mock` | bool | 是 | MOCK/降级标记：`True` = 确定性合成/演示数据，**永不进回测/生产**（R7） | 采集器 `provenance=="MOCK"` |
+| `not_backtest_safe` | bool | 是 | 严格 as-of 回测不可用标记（如 OASIS 不暴露逐日发布戳）；**禁回测，不禁止生产**（R8） | 采集器声明 |
+| `time_eligible` | bool | **计算** | R1/R2 纯时间门槛：`available_at <= decision_cutoff` | `property` 程序计算 |
+| `backtest_eligible` | bool | **计算** | = `time_eligible` 且 非 `is_mock` 且 非 `not_backtest_safe` 且 非生产采集 | `property` 程序计算 |
+| `production_eligible` | bool | **计算** | = `time_eligible` 且 非 `is_mock` 且 非回测采集 且 published/retrieved 齐备 | `property` 程序计算 |
+| `decision_eligible` | bool | **计算** | 模式对应单一门槛（PRODUCTION→production_eligible；其余→backtest_eligible，最保守）；**禁止人工/LLM 改写** | `property` 程序计算 |
 | `raw_source_id` | str | 是 | 原始响应/行 ID（API run id、CSV 行号、xlsx 单元格路径），供审计还原 | 采集器保存 raw response 时登记 |
 | `version` | str | 是 | schema/数据版本，默认 `asof_v1` | 常量 |
 | `mode` | str | 否 | `BACKTEST / PRODUCTION`（采集模式，审计用） | 采集器声明 |
@@ -102,12 +118,68 @@
   拉取窗口在 cutoff 结束，cutoff 后到的新数据只进 Post-trade Review，不进当日 snapshot。
 - **R6（快照不可变）**：feature_snapshot 为**追加写、不可变**；任何 `decision_eligible=FALSE`
   的记录只能进 `post_decision` / 复盘，绝不回填生产特征。
+- **R7（MOCK 硬隔离，Agent B）**：`is_mock=True` ⇒ `backtest_eligible=FALSE` 且
+  `production_eligible=FALSE`（MOCK 只能用于测试/演示；即便 `available_at <= cutoff` 也不能改变）。
+- **R8（NOT_BACKTEST_SAFE 硬隔离，Agent B）**：`not_backtest_safe=True` ⇒
+  `backtest_eligible=FALSE`（strict as-of 回测不可用；不禁止 production）。
+- **R9（Time Gate 只判 available_at）**：`time_eligible` 只由 `available_at <= decision_cutoff`
+  判定；**绝不判 `initialization_time`**。且 `available_at` 必须**严格晚于** `model_run_time`
+  （发布/下载延迟为正；拒绝把 init 当 available 的退化）。
+- **R10（无可靠 vintage 即不可回测）**：某历史 run 无法可靠证明真实 `available_at`
+  （如 GFS 12Z/18Z，发布与 cutoff 临界或在其后）⇒ `available_at = None` ⇒
+  `time_eligible = backtest_eligible = decision_eligible = FALSE`（不自行推测发布时刻）。
 
-### 2.3 代码接口（`code/data_acquisition/schemas.py`）
+### 2.3 available_at 语义与 GFS 发布延迟模型（P0-1 修复，Agent A）
+
+**Time Gate 只判 `available_at <= decision_cutoff`**，**绝不判 `initialization_time <= cutoff`**。
+GFS run 的初始时刻 ≠ 数据真正可用时刻（存在发布/下载延迟）。
+
+#### 五个时间概念（字段名保留英文）
+
+| 概念 | 说明 | 字段 |
+|---|---|---|
+| `model_run_time` | 模型起报时刻（run 起始） | `model_run_time` / `issue_time` |
+| `initialization_time` | = `model_run_time`（同义） | 同上 |
+| `available_at` | 该 run 数据**真正可用**的时刻（发布/下载延迟后），Time Gate 唯一判据 | `available_at` |
+| `retrieved_at` | 本次抓取时刻（墙钟，仅审计） | `retrieved_at` |
+| `decision_cutoff` | D-1 10:00 PT → UTC（DAM Market Close / bid cutoff） | `decision_cutoff` |
+
+#### GFS available_at 赋值策略（`weather_gfs.py`）
+
+Open-Meteo Single Runs API 只暴露 run 的初始时刻，**不返回逐日发布时刻戳**，
+因此 GFS 历史 run 的精确 `available_at` 不可直接观测。本项目采用**文档化的发布延迟模型**
+（来源 `weather_forecast_sources.md` §2.2 / `evidence_source_v021.md` §2）：
+
+- `GFS_PUBLISH_LAG_TYPICAL_H = 4.0`：典型发布延迟（NCEP 惯例首文件 ~3h15m、完整 ~4–4.5h；
+  Open-Meteo "global models 通常 4–6 h 发布"）。**PRODUCTION** 的
+  `published_at = init + 4h`（源方最早可得时刻的估计）。
+- `GFS_PUBLISH_LAG_CEILING_H = 6.0`：保守上界。**BACKTEST** 的
+  `available_at = init + 6h`（"该时刻必然已可用"的可证明上界）。
+
+#### 可回测（有可靠 vintage）分类
+
+| cycle | init (UTC) | 保守上界 available_at | vs cutoff（17:00 夏 / 18:00 冬 UTC） | backtest_eligible |
+|---|---|---|---|---|
+| 00Z | D 00:00 | D 06:00 | 严格早于 | ✅ TRUE |
+| 06Z | D 06:00 | D 12:00 | 严格早于 | ✅ TRUE |
+| 12Z | D 12:00 | D 18:00 | 夏=之后、冬=边界 | ❌ FALSE（无法可靠证明） |
+| 18Z | D 18:00 | D+1 00:00 | 之后 | ❌ FALSE |
+
+- **可回测（有 vintage）**：00Z / 06Z（`GFS_BACKTEST_SAFE_CYCLES`）。保守上界
+  `init+6h` 仍严格早于 cutoff，可证明。
+- **不可回测（FALSE）**：12Z / 18Z。12Z 与 cutoff 临界（冬令时上界 18:00 == cutoff 18:00，
+  边界不算"可靠证明"）→ **不自行推测**更短发布延迟；18Z init 在 cutoff 之后。
+  此类 run 在 BACKTEST 模式下 `available_at = None`（不解析）→
+  `time_eligible = backtest_eligible = decision_eligible = FALSE`，**绝不进历史决策**。
+- **PRODUCTION / Shadow（③）**：真实当前抓取，`available_at = max(published_at, retrieved_at)`，
+  `retrieved_at` = 墙钟（"源没发布 + 我们没拉到"都不可用）。
+- **不为让 Demo 有天气制造历史穿越**：拿不到可靠 `available_at` 就标不可用。
+
+### 2.4 代码接口（`code/data_acquisition/schemas.py`）
 
 | 函数 / 成员 | 作用 |
 |---|---|
-| `AsOfRecord`（dataclass） | 标准记录；`decision_eligible` / `is_usable` / `lead_hours` 为计算属性 |
+| `AsOfRecord`（dataclass） | 标准记录；`time_eligible / backtest_eligible / production_eligible / decision_eligible / is_usable / lead_hours` 为计算属性 |
 | `parse_timestamp(v)` | 任意 ISO → UTC naive `datetime`；失败返回 `None` |
 | `pt_naive_to_utc_naive(v)` | PT naive → UTC naive（zoneinfo，回退 DST 启发式） |
 | `make_decision_cutoff(decision_date)` | `D 10:00 PT` → UTC naive ISO |
@@ -131,7 +203,7 @@
 | `load_2da_csv` | `load_2da_forecast` | 预报 | T−2 **18:00 PT**（BPM Exhibit 2-1） | 是* | *`ASSUMED_AVAILABLE`；若实际发布晚于该点需重审 |
 | `load_ACTUAL_csv` | `load_actual` | 实际 | T 日之后 | 是（仅历史） | 作 T 特征=穿越，只作滞后 |
 | `zone_weather_hourly.csv` | `t2m / ssrd / wind100` | **ERA5 再分析/实测**（历史段） | 历史段 T−2 末；目标日预报**不可用** | **否（作预报）** | 变量名 ssrd_wm2/wind100 为 ERA5 风格，延伸到未来 → 目标日值禁用（`t2m_next` 等） |
-| `NCEP_GFS_025_via_OpenMeteo`（Single Runs） | `t2m / ssrd / wind100`（预报） | **as-issued 预报** | issue = D **12Z UTC**，发布 ≈ D 08:30 PT（init+3.5h） | 是 | 12:00 UTC < cutoff（17:00 UTC 夏 / 18:00 UTC 冬）；档案起点 2026-04-02，test 窗口全覆盖 |
+| `NCEP_GFS_025_via_OpenMeteo`（Single Runs） | `t2m / ssrd / wind100`（预报） | **as-issued 预报** | `available_at` = init + 发布延迟模型（BACKTEST 保守上界 +6h）：00Z/06Z → 06:00/12:00 UTC，严格早于 cutoff ✅；12Z → 上界 18:00 UTC 与 cutoff 临界、18Z 在其后 → **不可回测（FALSE）** | 部分（00Z/06Z ✅；12Z/18Z ❌） | 档案起点 2026-04-02，test 窗口全覆盖；默认 cycle = 06Z（`DEFAULT_CYCLE`）；详见 §2.3 |
 
 > **关键穿越点**：`zone_weather_hourly.csv` 的目标日（`*_next`）字段是再分析/延伸段，
 > **不是决策时可得预报**。要目标日天气预报，唯一合规来源是 GFS 档案（§5 第 8 行）。
@@ -158,9 +230,18 @@
 | `feature_name` | str | 是 | 特征名（与 `field_name` 对齐） |
 | `feature_value` | float | 是 | 该特征当日的取值 |
 | `source` | str | 是 | 数据源标识 |
+| `source_type` | str | 否 | 源语义类别（同 §2.1） |
+| `is_mock` | bool | 是 | MOCK 标记（复制自来源 As-of 记录；`True` → 快照永不可用，R7） |
+| `target_time` | str | 是 | 该行指向的交付时刻（UTC naive；由 `(target_date, target_hour)` 复算） |
 | `available_at` | str | 是 | 该值的 as-of 可用时点（UTC naive） |
-| `decision_eligible` | bool | 是 | 程序计算（复制自来源 As-of 记录） |
+| `retrieved_at` | str | 是 | 采集时刻（审计；复制自来源记录） |
+| `raw_source_id` | str | 是 | 原始响应/行 ID（溯源链中间件） |
+| `time_eligible` | bool | **计算** | 纯时间门槛（由 `available_at <= decision_cutoff` 复算） |
+| `backtest_eligible` | bool | **计算** | 复制自来源记录（含 R7/R8 硬隔离） |
+| `production_eligible` | bool | **计算** | 复制自来源记录（含 R7 硬隔离） |
+| `decision_eligible` | bool | **计算** | 复制自来源记录的单一门槛（MOCK 恒为 FALSE） |
 | `asof_record_id` | str | 是* | 溯源指针：指向来源 As-of 记录主键（*建议必填，追链的关键） |
+| `market_rule_version` | str | 是 | DAME/EDAM 市场规则版本标记 |
 | `version` | str | 是 | `asof_v1` |
 
 ### 4.2 生命周期
@@ -195,7 +276,8 @@ D+1 训练/推理只消费 decision_eligible=TRUE 的 snapshot 行
 **步骤**：
 1. 遍历 `decision_date ∈ 回测窗口`：`cutoff = make_decision_cutoff(D)`。
 2. 按特征清单（§3 矩阵 + `canonical.py` 的 Leakage Guard 可用性）逐源拉**历史 as-of 工件**：
-   - GFS 预报：`Open-Meteo Single Runs` 按 `run = D 12Z UTC` 取档案（= as-issued，非重算）；
+   - GFS 预报：`Open-Meteo Single Runs` 按 `run = D 00Z/06Z UTC` 取档案（= as-issued，非重算；
+     12Z/18Z 无法可靠证明发布早于 cutoff → 不可回测，见 §2.3）；
    - 历史价格 / 实际负荷：从本地 xlsx / CSV 取，`available_at` 用排程表口径（§3）；
    - 2DA 负荷预测：取文件，`available_at` 用 `T−2 18:00 PT`（ASSUMED）。
 3. 每条产出一个 `AsOfRecord`：`mode=BACKTEST`，`available_at = 历史 published_at（vintage）`，
@@ -215,7 +297,7 @@ D+1 训练/推理只消费 decision_eligible=TRUE 的 snapshot 行
 
 **步骤**：
 1. 调度器在 `D 09:30 PT`（可配，严格 < cutoff）启动。
-2. 逐源（GFS 12Z run 当日实拉、OASIS 最新价、负荷预报等）：
+2. 逐源（GFS run 当日实拉（默认 06Z；12Z 生产可用但须 cutoff 前拉到）、OASIS 最新价、负荷预报等）：
    - **先存 raw response**（登记 `raw_source_id`，落盘可复现）；
    - 记录 `retrieved_at`（墙钟 UTC naive）；
    - 解析 `published_at`（源 header / 排程）；
@@ -240,20 +322,31 @@ code/data_acquisition/schemas.py  ←（本次交付）输入侧 vintage 层：A
 ```
 
 - 本层管**数值型输入特征**的 vintage；evidence 层管**事件证据**的 vintage，二者互补不重叠。
-- `time_gate.is_available_before_cutoff()` 与 `AsOfRecord.decision_eligible` 判定规则一致；
+- `time_gate.is_available_before_cutoff()` 与 `AsOfRecord.time_eligible` 判定规则一致；
   统一在接入层把 PT 转 UTC naive 后比较。
+- **MOCK 硬隔离双实现同步（Agent B）**：`AsOfRecord`（数据层）与 `Evidence`（证据层）都
+  以 `is_mock=True` 硬禁 `backtest_eligible / production_eligible`，`time_gate` 单独把
+  MOCK 证据归入 `demo_mock` 桶（Decision Card 显示 `DATA NOT ELIGIBLE / DEMO MOCK`），
+  改动须两处同步 + 专项测试（`test_schemas.py::TestEligibilityHardRules`、
+  `test_time_gate.py::TestMockHardIsolation`）。
 
 ---
 
 ## 7. 防穿越规则清单（验收 Checklist）
 
 - [ ] 每条 As-of 记录有 `source / published_at / available_at / retrieved_at / target_time / decision_cutoff`
-- [ ] `decision_eligible` 全由程序计算，无人工/LLM 覆盖路径
+- [ ] `time_eligible / backtest_eligible / production_eligible / decision_eligible` 全由程序计算，无人工/LLM 覆盖路径
 - [ ] `available_at` 在 Backtest 中 = 历史 vintage；Production 中 = `max(published, retrieved)`
-- [ ] 任一关键时间缺失 ⇒ `decision_eligible = FALSE`
+- [ ] **Time Gate 只判 `available_at <= decision_cutoff`**，绝不判 `initialization_time`
+- [ ] GFS：00Z/06Z 有可靠 vintage（init+6h 保守上界 ≤ cutoff）→ 可回测；12Z/18Z → `backtest_eligible=FALSE`
+- [ ] `available_at` 严格晚于 `model_run_time`（发布延迟为正；拒绝 init 当 available）
+- [ ] 任一关键时间缺失 ⇒ `time_eligible = decision_eligible = FALSE`
+- [ ] `is_mock=True` ⇒ `backtest_eligible / production_eligible / decision_eligible` 全 FALSE（R7，即便 `available_at <= cutoff`）
+- [ ] `not_backtest_safe=True` ⇒ `backtest_eligible = FALSE`（R8，不禁止 production）
 - [ ] `zone_weather_hourly.csv` 目标日字段不进特征（只作滞后）
 - [ ] snapshot 追加写、不可变；post 记录只进复盘
 - [ ] `asof_record_id` → `raw_source_id` → raw response 全链可追
+- [ ] Decision Card 含 MOCK 证据时明确显示 `DATA NOT ELIGIBLE / DEMO MOCK`
 
 ---
 

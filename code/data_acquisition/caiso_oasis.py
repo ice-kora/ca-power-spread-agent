@@ -184,6 +184,7 @@ class CAISOLoadForecastCollector(Collector):
                     f"OPR_DT={target}&OPR_HR={h}&TAC={self.resource}"
                     f"&iv={str(r.get('INTERVALSTARTTIME_GMT'))[:19]}"
                 ),
+                is_mock=bool(is_mock),
             ))
         return records
 

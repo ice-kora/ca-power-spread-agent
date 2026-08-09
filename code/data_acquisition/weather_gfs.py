@@ -5,13 +5,32 @@ code/data_acquisition/weather_gfs.py —— GFS 天气预报采集器（Agent E 
 数据源：Open-Meteo Single Runs API 存档的 NCEP GFS 0.25°（`gfs_global`）。
   - 按 `run=YYYY-MM-DDTHH:00` 取**历史 as-issued 预报 run**（= forecast_issue_time），
     不是 ERA5/再分析反演（as-of 安全，与 agent/evidence/gfs_forecast.py 同源）。
-  - 决策日 D，取 D 12Z run（12:00 UTC），目标交付日 T = D+1。
-  - 时间戳（全部 UTC naive）：
-      published_at = issue_time = D 12:00 UTC
-      available_at = 按模式解析（BACKTEST=vintage=published_at；PRODUCTION=max(published,retrieved)）
-      decision_cutoff = D 10:00 PT → UTC
-      decision_eligible = (available_at <= decision_cutoff)，由 schemas 程序计算。
-  - target_time 对齐项目 hour∈1..24（PT）约定：`target_time_pt_to_utc(T, h)`。
+  - 决策日 D，默认取 D 06Z run（06:00 UTC；00Z/06Z 可回测），目标交付日 T = D+1。
+
+五个时间概念（P0-1，全部 UTC naive；字段名保留英文）
+------------------------------------------------------
+  model_run_time      : 起报时刻（run 起始，= initialization_time）
+  initialization_time : = model_run_time（代码中 issue_time / model_run_time 字段承载）
+  available_at        : 该 run 数据**真正可用**的时刻 = init + 发布延迟模型
+                        （BACKTEST 用保守上界 +6h；PRODUCTION 用 max(published, retrieved)）
+  retrieved_at        : 本次抓取时刻（墙钟，仅审计）
+  decision_cutoff     : D 10:00 PT → UTC（DAM Market Close / bid cutoff）
+
+  **Time Gate 只判 available_at <= decision_cutoff**，绝不判 initialization_time <= cutoff
+  （GFS 12Z init=12:00 UTC 恒早于 cutoff，但发布 ~15:30–18:00 UTC，init ≠ 可用时刻）。
+
+GFS 发布延迟模型（文档化来源 weather_forecast_sources.md §2.2 / evidence_source_v021.md §2）
+------------------------------------------------------------------------------------------
+  NCEP 惯例：首文件 ~3h15m、完整 ~4–4.5h；Open-Meteo 文档 "global models 通常 4–6 h 发布"。
+    GFS_PUBLISH_LAG_TYPICAL_H = 4.0   PRODUCTION published_at 用（典型延迟估计）
+    GFS_PUBLISH_LAG_CEILING_H = 6.0   BACKTEST available_at 用（保守上界，可证明性）
+
+可回测（有可靠 vintage）分类（同 weather_forecast_sources.md 结论）：
+  00Z / 06Z  → 保守上界 init+6h 仍严格早于 cutoff → backtest_eligible = TRUE
+  12Z        → 上界 18:00 UTC：夏=cutoff 之后、冬=cutoff 边界 → 无法可靠证明 → FALSE
+  18Z        → init 在 cutoff 之后 → FALSE
+  （MVP：① 有可靠 vintage→用；② 无可靠 vintage→available_at=None→不进历史决策；
+   ③ PRODUCTION/Shadow→真实当前抓取并记 retrieved_at。不为让 Demo 有天气制造历史穿越。）
 
 降级：网络失败 → 读缓存 raw → 确定性 MOCK（is_mock=True，明确标注，不冒充真实预报）。
 """
@@ -32,19 +51,34 @@ if str(REPO_ROOT) not in sys.path:
 
 from code.data_acquisition.base import Collector, FetchError, utc_now_naive  # noqa: E402
 from code.data_acquisition.schemas import (  # noqa: E402
+    MODE_BACKTEST,
+    MODE_PRODUCTION,
     AsOfRecord,
     NODE_COORDS,
+    parse_timestamp,
     target_time_pt_to_utc,
 )
 
 #: 节点 → (纬度, 经度)，来源：节点位置.xlsx（与 agent/evidence/gfs_forecast.py 一致）
 NODE_COORDS = dict(NODE_COORDS)
 
-#: GFS 运行周期（UTC 初始时刻）；12Z 是 10:00 PT cutoff 前最新一跑
+#: GFS 运行周期（UTC 初始时刻）
 GFS_CYCLES_UTC: Dict[str, str] = {
     "00Z": "00:00", "06Z": "06:00", "12Z": "12:00", "18Z": "18:00",
 }
-DEFAULT_CYCLE = "12Z"
+#: 默认 cycle：06Z（保守上界 init+6h=12:00 UTC 仍严格早于 cutoff；12Z 与 cutoff 临界，不可回测）
+DEFAULT_CYCLE = "06Z"
+
+#: GFS 发布延迟（小时；来源 weather_forecast_sources.md §2.2 / evidence_source_v021.md §2）：
+#: NCEP 惯例首文件 ~3h15m、完整 ~4–4.5h；Open-Meteo 文档 "global models 通常 4–6 h 发布"。
+GFS_PUBLISH_LAG_TYPICAL_H: float = 4.0    # 典型：PRODUCTION published_at
+GFS_PUBLISH_LAG_CEILING_H: float = 6.0    # 保守上界：BACKTEST available_at（可证明）
+
+#: 可回测（有可靠 vintage）的 cycle：保守上界 init+6h 仍严格早于 cutoff。
+#:   00Z → ≤06:00 UTC；06Z → ≤12:00 UTC（cutoff 17:00 夏 / 18:00 冬 UTC）→ 均可证明。
+#:   12Z → 上界 18:00 UTC，夏=cutoff 之后、冬=cutoff 边界 → 无法可靠证明（不自行推测）。
+#:   18Z → init 在 cutoff 之后 → 不可回测。
+GFS_BACKTEST_SAFE_CYCLES: tuple = ("00Z", "06Z")
 
 #: Open-Meteo 变量 → (field_name, unit)，field_name 对齐项目 canonical（t2m/ssrd/wind100）
 VAR_MAP: Dict[str, tuple] = {
@@ -95,6 +129,43 @@ class GFSWeatherCollector(Collector):
 
     def forecast_run_id(self, query_date: str) -> str:
         return f"{str(query_date)[:10]}T{GFS_CYCLES_UTC[self.cycle]}Z"
+
+    # ---------------------------------------------------------- 时间概念拆分（P0-1）
+    def model_run_time_utc(self, query_date: str) -> str:
+        """模型起报时刻（run 起始，UTC naive）= initialization_time。"""
+        return self.run_start_utc(query_date)
+
+    def initialization_time_utc(self, query_date: str) -> str:
+        """= model_run_time_utc（同义；任务要求显式拆分并文档化）。"""
+        return self.model_run_time_utc(query_date)
+
+    def published_at_utc(self, query_date: str) -> str:
+        """GFS 发布时刻估计（UTC naive）= init + 发布延迟模型。
+
+        PRODUCTION : init + GFS_PUBLISH_LAG_TYPICAL_H（源方典型发布延迟的估计）
+        BACKTEST   : init + GFS_PUBLISH_LAG_CEILING_H（保守上界；审计与安全判定用）
+        """
+        init_dt = datetime.fromisoformat(self.run_start_utc(query_date))
+        lag = (GFS_PUBLISH_LAG_TYPICAL_H if self.mode == MODE_PRODUCTION
+               else GFS_PUBLISH_LAG_CEILING_H)
+        return (init_dt + timedelta(hours=lag)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    def backtest_eligible_for_cycle(self, query_date: str) -> bool:
+        """该 run 是否有可靠历史 vintage 可进严格 as-of 回测。
+
+        仅当 cycle ∈ GFS_BACKTEST_SAFE_CYCLES 且保守上界 published_at <= decision_cutoff。
+        12Z 冬令时恰逢边界（上界 18:00 == 冬 cutoff 18:00）——边界不视为"可靠证明"，
+        故显式只允许 00Z / 06Z（不自行推测更短发布延迟）。
+        """
+        if self.mode == MODE_PRODUCTION:
+            return False
+        if self.cycle not in GFS_BACKTEST_SAFE_CYCLES:
+            return False
+        pub = parse_timestamp(self.published_at_utc(query_date))
+        cutoff = parse_timestamp(self.decision_cutoff(query_date))
+        if pub is None or cutoff is None:
+            return False
+        return pub <= cutoff
 
     # ------------------------------------------------------------------ fetch
     def _build_url(self, query_date: str) -> str:
@@ -148,8 +219,14 @@ class GFSWeatherCollector(Collector):
             if key not in by_time:
                 by_time[key] = i
         lat, lon = self.lat_lon
-        issue_time = self.run_start_utc(query_date)
-        published_at = issue_time
+        issue_time = self.run_start_utc(query_date)   # = model_run_time = initialization_time
+        model_run_time = issue_time
+        published_at = self.published_at_utc(query_date)  # init + 发布延迟模型（≠ init）
+        # 回测可用性：cycle 无可靠 vintage（12Z/18Z）→ available_at 不解析（None）
+        # → time_eligible=backtest_eligible=FALSE，绝不进历史决策（不自行推测发布时刻）
+        forced_available_at: Optional[str] = None
+        if self.mode == MODE_BACKTEST and self.cycle not in GFS_BACKTEST_SAFE_CYCLES:
+            forced_available_at = ""
         records: List[AsOfRecord] = []
         for var in self.variables:
             if var not in VAR_MAP:
@@ -171,10 +248,13 @@ class GFSWeatherCollector(Collector):
                     latitude=lat,
                     longitude=lon,
                     forecast_run=self.forecast_run_id(query_date),
+                    model_run_time=model_run_time,
                     issue_time=issue_time,
                     published_at=published_at,
+                    available_at=forced_available_at,
                     retrieved_at=retrieved_at,
                     raw_source_id=f"run={issue_time}&node={self.node}",
+                    is_mock=bool(is_mock),
                 )
                 records.append(rec)
         return records

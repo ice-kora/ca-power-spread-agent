@@ -22,11 +22,17 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from agent.evidence.schema import new_uncertain_evidence, parse_timestamp  # noqa: E402
+from agent.evidence.schema import (  # noqa: E402
+    evidence_from_dict,
+    new_uncertain_evidence,
+    parse_timestamp,
+)
 from agent.evidence.time_gate import (  # noqa: E402
     is_decision_eligible,
     is_available_before_cutoff,
+    is_mock_evidence,
     split_eligible,
+    split_by_eligibility,
     assert_no_post_decision,
 )
 
@@ -136,6 +142,79 @@ class TestTimeGate(unittest.TestCase):
             published_at="not-a-timestamp", decision_cutoff=CUTOFF_10)
         self.assertFalse(ev.decision_eligible)
         self.assertIsNone(parse_timestamp("not-a-timestamp"))
+
+
+class TestMockHardIsolation(unittest.TestCase):
+    """Agent B 硬隔离：MOCK 证据永不进入真实决策。"""
+
+    CUTOFF = "2025-07-09T10:00:00"
+
+    def _mock(self, published_at="2025-07-09T09:00:00"):
+        return new_uncertain_evidence(
+            event_type="WEATHER_FORECAST",
+            published_at=published_at,
+            decision_cutoff=self.CUTOFF,
+            is_mock=True,
+            raw_source_id="mock-run-001",
+            summary="确定性合成 MOCK 预报（仅演示，禁止用于真实建议）。",
+        ).to_dict()
+
+    def test_mock_never_decision_eligible(self):
+        # 时间合格（published_at <= cutoff）但 is_mock=True → 恒 FALSE
+        ev = self._mock()
+        self.assertTrue(ev["time_eligible"])
+        self.assertFalse(ev["decision_eligible"])
+        self.assertFalse(ev["backtest_eligible"])
+        self.assertFalse(ev["production_eligible"])
+        self.assertFalse(is_decision_eligible(ev, self.CUTOFF))
+
+    def test_mock_blocks_even_if_before_cutoff(self):
+        ev = self._mock(published_at="2025-07-08T00:00:00")  # 远早于 cutoff
+        self.assertTrue(ev["time_eligible"])
+        self.assertFalse(ev["decision_eligible"])
+
+    def test_is_mock_evidence_detection(self):
+        self.assertTrue(is_mock_evidence(self._mock()))
+        self.assertFalse(is_mock_evidence(
+            new_uncertain_evidence(published_at="2025-07-09T09:00:00",
+                                   decision_cutoff=self.CUTOFF).to_dict()))
+
+    def test_split_by_eligibility_three_buckets(self):
+        mock_ev = evidence_from_dict(self._mock())
+        ok_ev = evidence_from_dict(new_uncertain_evidence(
+            published_at="2025-07-09T09:00:00", decision_cutoff=self.CUTOFF).to_dict())
+        late_ev = evidence_from_dict(new_uncertain_evidence(
+            published_at="2025-07-10T06:00:00", decision_cutoff=self.CUTOFF).to_dict())
+        eligible, demo_mock, post = split_by_eligibility(
+            [mock_ev, ok_ev, late_ev], self.CUTOFF)
+        self.assertEqual(len(eligible), 1)
+        self.assertEqual(len(demo_mock), 1)
+        self.assertEqual(len(post), 1)
+        self.assertIn(ok_ev, eligible)
+        self.assertIn(mock_ev, demo_mock)
+        self.assertIn(late_ev, post)
+
+    def test_split_eligible_merges_mock_to_post(self):
+        ev = evidence_from_dict(self._mock())
+        eligible, post = split_eligible([ev], self.CUTOFF)
+        self.assertEqual(len(eligible), 0)
+        self.assertEqual(len(post), 1)
+
+    def test_assert_no_post_decision_blocks_mock_with_demo_message(self):
+        ev = evidence_from_dict(self._mock())
+        with self.assertRaises(RuntimeError) as cm:
+            assert_no_post_decision([ev], self.CUTOFF)
+        self.assertIn("DEMO MOCK", str(cm.exception))
+        self.assertIn("DATA NOT ELIGIBLE", str(cm.exception))
+
+    def test_validate_evidence_catches_mock_eligibility_drift(self):
+        from agent.evidence.schema import validate_evidence
+        bad = self._mock()
+        bad["decision_eligible"] = True
+        bad["backtest_eligible"] = True
+        errs = validate_evidence(bad)
+        self.assertTrue(any("硬规则 R7" in e for e in errs), errs)
+        self.assertTrue(any("漂移" in e for e in errs), errs)
 
 
 if __name__ == "__main__":

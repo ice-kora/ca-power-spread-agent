@@ -5,11 +5,13 @@ code/data_acquisition/validation.py —— 数据质量校验（Agent E）
 采集后校验（validate_collection），输出 [{level, message}]：
   1. 记录非空
   2. decision_cutoff 与程序期望一致（D 10:00 PT → UTC）
-  3. 每条记录 decision_eligible 复算 == 存储值（防漂移）
+  3. 每条记录 eligibility 四字段（time/backtest/production/decision）复算 == 存储值（防漂移）
   4. (target_time, field_name) 重复检测
   5. 每字段覆盖度 / 缺失率（缺目标小时 → WARNING）
   6. 值域 plausibility（温度 / 风 / 辐照 / 负荷）
-  7. MOCK / not_backtest_safe 声明（禁止用于生产/严格回测）
+  7. MOCK / not_backtest_safe 声明 + 硬规则（Agent B）：
+     - is_mock=True 禁止声明 backtest_eligible / production_eligible（R7）
+     - not_backtest_safe=True 禁止声明 backtest_eligible（R8）
   8. 时区 / DST 检查：schemas.pt_naive_to_utc_naive 与 zoneinfo 独立换算一致
 
 只做"结构/口径/取值"校验，不做"事实真假"——真假由数据源负责。
@@ -89,23 +91,35 @@ def validate_collection(collector, records: List[Dict[str, Any]],
                      "message": f"{source}: decision_cutoff 不一致 stored={sorted(stored_cutoffs)} "
                                 f"expected={expected_cutoff}"})
 
-    # 2) 逐条 decision_eligible 复算（防漂移）
+    # 2) 逐条 eligibility 四字段复算（防漂移）+ 硬规则（R7/R8）
     for r in records:
         try:
             rec = asof_from_dict(r)
-            recomputed = bool(rec.decision_eligible)
         except Exception as exc:
             msgs.append({"level": "ERROR",
                          "message": f"{source}: 记录不可解析 {r.get('target_time')}: {exc}"})
             continue
-        stored = bool(r.get("decision_eligible"))
-        if stored != recomputed:
+        for key in ("time_eligible", "backtest_eligible", "production_eligible", "decision_eligible"):
+            recomputed = bool(getattr(rec, key))
+            stored = bool(r.get(key))
+            if stored != recomputed:
+                msgs.append({"level": "ERROR",
+                             "message": f"{source}: {key} 漂移 target_time="
+                                        f"{r.get('target_time')} field={r.get('field_name')} "
+                                        f"stored={stored} recomputed={recomputed} "
+                                        f"(available_at={r.get('available_at')}, "
+                                        f"cutoff={r.get('decision_cutoff')})"})
+        # R7：MOCK 数据禁止声明 backtest/production 可用
+        if rec.is_mock and (bool(r.get("backtest_eligible")) or bool(r.get("production_eligible"))):
             msgs.append({"level": "ERROR",
-                         "message": f"{source}: decision_eligible 漂移 target_time="
-                                    f"{r.get('target_time')} field={r.get('field_name')} "
-                                    f"stored={stored} recomputed={recomputed} "
-                                    f"(available_at={r.get('available_at')}, "
-                                    f"cutoff={r.get('decision_cutoff')})"})
+                         "message": f"{source}: 硬规则 R7 is_mock=True 却声明可用 "
+                                    f"target_time={r.get('target_time')} field={r.get('field_name')}"})
+        # R8：not_backtest_safe 数据禁止声明 backtest 可用
+        if rec.not_backtest_safe and bool(r.get("backtest_eligible")):
+            msgs.append({"level": "ERROR",
+                         "message": f"{source}: 硬规则 R8 not_backtest_safe=True 却声明 "
+                                    f"backtest_eligible target_time={r.get('target_time')} "
+                                    f"field={r.get('field_name')}"})
 
     # 3) 重复检测
     dup = Counter((r.get("target_time"), r.get("field_name")) for r in records)

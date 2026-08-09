@@ -36,6 +36,7 @@ if str(REPO_ROOT) not in sys.path:
 from code.data_acquisition.schemas import (  # noqa: E402
     MODE_BACKTEST,
     AsOfRecord,
+    _coerce_bool,
     resolve_available_at,
 )
 
@@ -358,17 +359,42 @@ class Collector(ABC):
         latitude: Optional[float],
         longitude: Optional[float],
         forecast_run: str,
+        model_run_time: str = "",
         issue_time: str,
         published_at: str,
+        available_at: Optional[str] = None,
         retrieved_at: str,
         raw_source_id: str,
+        is_mock: bool = False,
+        source_type: str = "",
+        not_backtest_safe: Optional[bool] = None,
     ) -> AsOfRecord:
-        """构造一条 AsOfRecord：available_at 按模式解析，decision_eligible 程序计算。"""
-        available_at = resolve_available_at(published_at, retrieved_at, self.mode) or ""
+        """构造一条 AsOfRecord：available_at 按模式解析，decision_eligible 程序计算。
+
+        Provenance 字段（is_mock / not_backtest_safe / source_type）写入每条记录，
+        保证进入模型/Risk Gate 前可逐字段追溯来源与降级状态。
+
+        Args:
+            model_run_time: 模型起报时刻（GFS run 起始 = initialization_time）。
+                与 issue_time 同义但显式拆分（P0-1 五个时间概念），供时间门槛校验。
+            available_at:   可选。显式给定则直接使用（不回退到模式解析）；
+                采集器用于"无可靠 vintage 的 run"强制置空（None 保持默认解析）。
+        """
+        from code.data_acquisition.schemas import infer_source_type
+        if available_at is None:
+            available_at = resolve_available_at(published_at, retrieved_at, self.mode) or ""
         return AsOfRecord(
             source=self.source_name,
+            source_type=source_type or infer_source_type(self.source_name, field_name),
+            is_mock=_coerce_bool(is_mock),
+            not_backtest_safe=(
+                self.not_backtest_safe
+                if not_backtest_safe is None
+                else _coerce_bool(not_backtest_safe)
+            ),
             field_name=field_name,
             forecast_run=forecast_run,
+            model_run_time=model_run_time,
             issue_time=issue_time,
             published_at=published_at,
             available_at=available_at,

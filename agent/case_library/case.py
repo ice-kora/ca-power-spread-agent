@@ -36,8 +36,19 @@ Case 结构定义（V0.2 白盒交易决策 Agent · 模块 2/3：Case Library�
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field, asdict
+from pathlib import Path
 from typing import Any, Dict, List
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from code.market_rules import (  # noqa: E402
+    CURRENT_MARKET_RULE_VERSION,
+    normalize_market_rule_version,
+)
 
 #: 建议动作三态（与 business_contract §5 一致）
 ACTIONS: tuple = ("BUY_DA", "SELL_DA", "NO_TRADE")
@@ -71,10 +82,15 @@ class Case:
     case_available_at: str = ""
     review_completed_at: str = ""
 
+    # -- Provenance / 版本标记 ----------------------------------------------
+    # market_rule_version  该 Case 对应交易所在的市场规则版本（DAME/EDAM 标记，本轮仅保存）
+    market_rule_version: str = CURRENT_MARKET_RULE_VERSION
+
     # ------------------------------------------------------------------
     def to_dict(self) -> Dict[str, Any]:
         """序列化为可 json.dump 的 dict（None 保留，便于区分"缺失"与 0）。"""
         d = asdict(self)
+        d["market_rule_version"] = normalize_market_rule_version(self.market_rule_version)
         # 把嵌套 Evidence dataclass（若有）转成 dict
         if isinstance(self.event_evidence, (list, tuple)):
             d["event_evidence"] = [
@@ -109,6 +125,9 @@ class Case:
             case_created_at=str(raw.get("case_created_at", "")),
             case_available_at=str(raw.get("case_available_at", "")),
             review_completed_at=str(raw.get("review_completed_at", "")),
+            market_rule_version=str(
+                raw.get("market_rule_version", CURRENT_MARKET_RULE_VERSION)
+            ),
         )
 
     # ------------------------------------------------------------------
