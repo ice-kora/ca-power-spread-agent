@@ -109,7 +109,7 @@ def _check_modules() -> list:
 
 def main() -> int:
     print("=" * 72)
-    print("  CAISO Trading Decision Agent · V0.3.1.1 启动自检")
+    print("  CAISO Trading Decision Agent MVP · V0.3.1.2 Demo Freeze 启动自检")
     print("=" * 72)
 
     quick = "--quick" in sys.argv

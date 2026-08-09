@@ -1,5 +1,16 @@
 # Architecture · V0.2 白盒交易决策 Agent
 
+> ## SUPERSEDED / HISTORICAL DESIGN RECORD
+>
+> 本文档是 **V0.2** 架构设计记录，**NOT CURRENT IMPLEMENTATION**。
+> 当前实现（V0.3.1.x Demo Freeze）以 **Web + LLM Agent** 为主入口：
+> - 当前架构 / 入口：`README.md`、`mvp_readme.md`、`mvp_web.py`
+> - 当前决策链**单一来源**：`code/decision_service.py`（`DecisionService.run_decision` → DecisionSnapshot；CLI/Web/LLM Tools 消费同一份）
+> - 当前 Time Gate 唯一判据：`available_at <= decision_cutoff`（`agent/evidence/time_gate.py`、`agent/evidence/schema.py`；available-at-only，不 fallback）
+> - 当前市场规则版本：`code/market_rules.py`（`market_rule_version_for(date)`，date-aware，2026-05-01 边界）
+>
+> V0.2 记录保留用于项目演进溯源。
+
 > CAISO 价差交易决策辅助项目 · V0.2 架构说明
 > 目标：在保留 V0.1 正确的数据/特征/模型/回测基础上，重构系统职责为**白盒、可审计、可解释的决策流水线**。供架构评审。
 

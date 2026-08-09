@@ -63,7 +63,8 @@ class TestMvpWebV0311(unittest.TestCase):
         self.assertIn(s.get("llm"), ("CONNECTED", "NOT CONFIGURED"))
         self.assertEqual(s.get("auto_trading"), "DISABLED")
         self.assertEqual(s.get("settlement"), "SIMPLIFIED SIGNAL BACKTEST")
-        self.assertEqual(meta.get("web_version"), "V0.3.1.1")
+        # V0.3.1.3：统一展示 Demo Freeze 版本（不再出现历史版本号）
+        self.assertTrue(str(meta.get("web_version", "")).startswith("V0.3.1.2"))
         # 首页静态 HTML 包含 MVP Status 容器与渲染函数（值由 /api/meta 动态填充）
         page = self.client.get("/").get_data(as_text=True)
         self.assertIn('id="mvp-status"', page)
@@ -197,7 +198,7 @@ class TestMvpWebV0311(unittest.TestCase):
             "model_output": {"node": NODE, "note": "不在 test 预测窗口"},
             "evidence": {"eligible": [{"evidence_id": "E1"}], "rejected": []},
         }
-        warnings = mvp_web._decision_warnings(dec, "offline")
+        warnings = mvp_web._decision_warnings(dec)
         codes = {w["code"] for w in warnings}
         self.assertIn("NO_PREDICTION", codes)
         np_w = next(w for w in warnings if w["code"] == "NO_PREDICTION")
@@ -211,13 +212,16 @@ class TestMvpWebV0311(unittest.TestCase):
 
     # ------------------------------------------------------------- T5 Evidence source
     def test_t5_evidence_source_unavailable_warning(self):
-        dec = {"context": {"decision_date": DD},
-               "model_output": {"expected_return": 1.0},
-               "evidence": {"eligible": [], "rejected": []}}
-        # offline 模式不触发（静态证据为空属预期）
-        self.assertEqual(mvp_web._decision_warnings(dec, "offline"), [])
-        # real 模式无可用证据 → 结构化警告
-        warnings = mvp_web._decision_warnings(dec, "real")
+        # offline（EVIDENCE MODE=NONE）：静态无证据属预期，不触发警告
+        dec_none = {"context": {"decision_date": DD, "evidence_mode": "NONE"},
+                    "model_output": {"expected_return": 1.0},
+                    "evidence": {"eligible": [], "rejected": []}}
+        self.assertEqual(mvp_web._decision_warnings(dec_none), [])
+        # LIVE 模式（真实 GFS）无可用证据 → 网络失败诚实降级 → 结构化警告
+        dec_live = {"context": {"decision_date": DD, "evidence_mode": "LIVE"},
+                    "model_output": {"expected_return": 1.0},
+                    "evidence": {"eligible": [], "rejected": []}}
+        warnings = mvp_web._decision_warnings(dec_live)
         codes = {w["code"] for w in warnings}
         self.assertIn("EVIDENCE_SOURCE_UNAVAILABLE", codes)
         w = next(w for w in warnings if w["code"] == "EVIDENCE_SOURCE_UNAVAILABLE")

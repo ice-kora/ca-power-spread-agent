@@ -171,13 +171,13 @@ class TestGFSSingleSource(unittest.TestCase):
 
     def test_winter_12z_boundary_consistent_ineligible(self):
         # 冬令时 12Z：published 估计 == cutoff（18:00 == 18:00），但无可靠 vintage
-        # → 必须仍为 ineligible（边界不视为可证明），Adapter 与 AsOfRecord 可用性一致
+        # → 必须仍为 ineligible（边界不视为可证明），Adapter 与 AsOfRecord 可用性一致。
         b, c = self._assert_adapter_asof("12Z", DD_WINTER)
         self.assertFalse(b["decision_eligible"])
-        self.assertEqual(b["available_at"], "")
-        # 边界下 Adapter 清空 published_at（不可回退到 init 当发布时间）；
-        # AsOfRecord 仍保留估计值供审计 —— 三端 Evidence（均经 Adapter）依然一致
-        self.assertEqual(b["published_at"], "")
+        self.assertEqual(b["available_at"], "")     # 无可靠 vintage → available_at 保持空
+        # V0.3.1.3 available-at-only：Time Gate 不 fallback published_at，故 published_at
+        # 仅作审计保留（与 AsOfRecord 完全一致，不因边界被清空）；可用性只由 available_at 决定。
+        self.assertEqual(b["published_at"], "2026-01-08T18:00:00")
         self.assertEqual(c["published_at"], "2026-01-08T18:00:00")
 
     def test_fetcher_always_default_cycle(self):

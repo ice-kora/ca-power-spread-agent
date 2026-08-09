@@ -78,13 +78,14 @@ from code.decision_service import (  # noqa: E402
     CASE_LIBRARY_VERSION,
     DECISION_CUTOFF_DESC,
     EVIDENCE_TIME_GATE_VERSION,
-    MARKET_RULE_VERSION,
     MODEL_VERSION,
+    MVP_LABEL,
     OUTCOME_NOT_REVEALED,
     RISK_GATE_VERSION,
     RULE_ENGINE_VERSION,
     SCHEMA_VERSION,
     DecisionService,
+    HistoricalSnapshotEvidenceAdapter,
     StaticEvidenceAdapter,
 )
 from code.data_acquisition.schemas import (  # noqa: E402
@@ -196,10 +197,21 @@ _BRIEF_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
 def service(evidence: str = "real") -> DecisionService:
-    """按证据模式取（并缓存）DecisionService。"""
+    """按证据模式取（并缓存）DecisionService。
+
+    - offline      → StaticEvidenceAdapter([])：不取外部证据（EVIDENCE MODE = NONE）。
+    - real         → DEMO MODE 用 HistoricalSnapshotEvidenceAdapter（真实历史 GFS
+      Evidence Snapshot，可重复、不依赖现场网络，EVIDENCE MODE = HISTORICAL_SNAPSHOT）；
+      FULL / SHADOW 用 DefaultEvidenceAdapter（真实 Collector，EVIDENCE MODE = LIVE）。
+    """
     key = "offline" if evidence in ("offline", "static") else "real"
     if key not in _SERVICES:
-        adapter = StaticEvidenceAdapter([]) if key == "offline" else None
+        if key == "offline":
+            adapter = StaticEvidenceAdapter([])
+        elif _data_mode() == MODE_DEMO:
+            adapter = HistoricalSnapshotEvidenceAdapter()
+        else:
+            adapter = None          # DefaultEvidenceAdapter（FULL/LIVE 真实 Collector）
         _SERVICES[key] = DecisionService(evidence_adapter=adapter)
     return _SERVICES[key]
 
@@ -405,7 +417,8 @@ def _feature_explain(f: Dict[str, Any]) -> str:
 # 若服务端未提供 / 结构不全 → 本模块按决策对象真实数据计算（_compute_runtime_audit）。
 # OVERALL 一律由 items 的真实 status 推导（任一 FAIL → FAIL；否则任一 WARNING → WARNING；否则 PASS）。
 # ---------------------------------------------------------------------------
-_RUNTIME_AUDIT_ORDER = ["FEATURE_AS_OF", "EVIDENCE_TIME_GATE", "NO_MOCK", "CASE_AS_OF", "OUTCOME_LEAKAGE"]
+_RUNTIME_AUDIT_ORDER = ["FEATURE_AS_OF", "EVIDENCE_TIME_GATE", "EVIDENCE_AVAILABILITY",
+                        "EVIDENCE_PROVENANCE", "NO_MOCK", "CASE_AS_OF", "OUTCOME_LEAKAGE"]
 
 
 def _ts(x) -> Optional[Any]:
@@ -466,31 +479,71 @@ def _compute_runtime_audit(dec: Dict[str, Any]) -> Dict[str, Any]:
         "FEATURE_AS_OF", "Feature As-of Eligibility", len(feats), f_fail,
         note="；".join(f_notes[:4]) or "全部特征 decision_eligible=True", warn_count=f_warn))
 
-    # 2) Evidence Time Gate：eligible 必须 available_at <= cutoff（available_at 缺失时
-    #    回退 published_at 复验，与 Time Gate 判据一致）；rejected 必须非 MOCK 且
-    #    晚于 cutoff（或缺失不可证）。逐条程序复验 Time Gate 判定。
+    # 2) Evidence Time Gate（V0.3.1.3 available-at-only）：eligible 必须
+    #    available_at <= cutoff 且非 MOCK（缺失 → FAIL）；rejected 非 MOCK 且
+    #    available_at 晚于 cutoff（缺失已正确隔离 → WARNING）。逐条程序复验。
     ev = dec.get("evidence") or {}
     elig = list(ev.get("eligible") or [])
     rej = list(ev.get("rejected") or ev.get("post_decision") or [])
-    g_fail, g_notes = 0, []
+    g_fail, g_warn, g_notes, g_warns = 0, 0, [], []
     cut = _ts(cutoff_utc)
     for e in elig:
-        if cut is not None:
-            avail = _ts(e.get("available_at") or e.get("published_at"))
-            if avail is not None and avail > cut:
-                g_fail += 1
-                g_notes.append(f"eligible={e.get('evidence_id')} available_at 晚于 cutoff")
+        if bool(e.get("is_mock")):
+            g_fail += 1
+            g_notes.append(f"eligible 含 MOCK: {e.get('evidence_id')}")
+            continue
+        avail = _ts(e.get("available_at"))          # 只判 available_at，不 fallback
+        if cut is not None and (avail is None or avail > cut):
+            g_fail += 1
+            g_notes.append(f"eligible={e.get('evidence_id')} available_at 缺失或晚于 cutoff")
     for r in rej:
         if bool(r.get("is_mock")):
             continue  # MOCK 隔离属预期
-        if not str(r.get("rejection_reason") or "").strip():
+        if not str(r.get("available_at") or "").strip():
+            g_warn += 1
+            g_warns.append(f"rejected={r.get('evidence_id')} 无已证 available_at（MISSING_AVAILABLE_AT，已隔离不进决策）")
+        elif not str(r.get("rejection_reason") or "").strip():
             g_fail += 1
             g_notes.append(f"rejected={r.get('evidence_id')} 无 rejection_reason（应可判定）")
     items.append(_audit_item(
         "EVIDENCE_TIME_GATE", "Evidence Time Gate", len(elig) + len(rej), g_fail,
-        note="；".join(g_notes[:4]) or
+        note="；".join(g_notes[:3] + g_warns[:3]) or
              (f"{len(elig)} eligible / {len(rej)} rejected，与 Time Gate 判定一致" if (elig or rej)
-              else "无外部证据（诚实降级为空）")))
+              else "无外部证据（诚实降级为空）"), warn_count=g_warn))
+
+    # 2b) Evidence Availability（V0.3.1.3）：每条证据必须有已证 available_at（Time Gate 唯一判据）。
+    a_all = elig + rej
+    a_missing = sum(1 for e in a_all if not str(e.get("available_at") or "").strip())
+    items.append(_audit_item(
+        "EVIDENCE_AVAILABILITY", "Evidence Availability", len(a_all), 0,
+        note=(f"{a_missing} 条证据无已证 available_at（MISSING_AVAILABLE_AT / AVAILABILITY_NOT_PROVEN，已隔离不进决策）"
+              if a_missing else f"全部 {len(a_all)} 条证据均有已证 available_at"),
+        warn_count=a_missing))
+
+    # 2c) Evidence Provenance（V0.3.1.3）：来源 / 类型 / 快照声明齐备且真实。
+    p_fail, p_warn, p_notes = 0, 0, []
+    for e in a_all:
+        if not str(e.get("source") or "").strip():
+            p_warn += 1
+            p_notes.append(f"证据缺 source: {e.get('evidence_id')}")
+        if not str(e.get("source_type") or "").strip():
+            p_warn += 1
+            p_notes.append(f"证据缺 source_type: {e.get('evidence_id')}")
+    prov = dec.get("context", {}).get("evidence_provenance") or {}
+    if prov.get("historical_snapshot"):
+        if prov.get("contains_mock"):
+            p_fail += 1
+            p_notes.append("Historical Snapshot contains_mock=True（违反诚实声明）")
+        if not prov.get("artifact_hash"):
+            p_warn += 1
+            p_notes.append("Historical Snapshot 缺 artifact_hash（无法核对完整性）")
+    items.append(_audit_item(
+        "EVIDENCE_PROVENANCE", "Evidence Provenance",
+        len(a_all) + (1 if prov.get("historical_snapshot") else 0), p_fail,
+        note="；".join(p_notes[:4]) or
+             ("Historical Evidence Snapshot: VERIFIED（contains_mock=false）" if prov.get("historical_snapshot")
+              else "证据来源 / 类型齐备"),
+        warn_count=p_warn))
 
     # 3) No Mock Data：特征与 eligible 证据中不得出现 is_mock=True。
     m_checked = len(feats) + len(elig) + len(rej)
@@ -624,7 +677,7 @@ def _runtime_audit(dec: Dict[str, Any]) -> Dict[str, Any]:
     return fallback
 
 
-def _decision_warnings(dec: Dict[str, Any], evidence_mode: str) -> List[Dict[str, str]]:
+def _decision_warnings(dec: Dict[str, Any]) -> List[Dict[str, str]]:
     """对成功返回的决策补充结构化业务警告（ERROR CODE + message + suggested_action）。"""
     warnings: List[Dict[str, str]] = []
     mo = dec.get("model_output") or {}
@@ -633,20 +686,29 @@ def _decision_warnings(dec: Dict[str, Any], evidence_mode: str) -> List[Dict[str
         warnings.append({"code": cat["code"], "message": cat["message"],
                          "suggested_action": cat["action"]})
     ev = dec.get("evidence") or {}
-    if evidence_mode == "real" and not ev.get("eligible") and not ev.get("rejected"):
+    # V0.3.1.3：仅 FULL/LIVE 模式"无证据"才提示源不可用（网络失败诚实降级）；
+    # DEMO HISTORICAL_SNAPSHOT 无匹配快照、offline NONE 属用户选择，不误报。
+    emode = str(dec.get("context", {}).get("evidence_mode", "")).upper()
+    if emode == "LIVE" and not ev.get("eligible") and not ev.get("rejected"):
         cat = ERROR_CATALOG["EVIDENCE_SOURCE_UNAVAILABLE"]
         warnings.append({"code": cat["code"], "message": cat["message"],
                          "suggested_action": cat["action"]})
     return warnings
 
 
-def _prepare_decision(dec: Dict[str, Any], evidence_mode: str) -> Dict[str, Any]:
-    """给前端返回的决策对象：剔除内部字段 + 补充展示元数据 + Runtime Audit。"""
+def _prepare_decision(dec: Dict[str, Any], evidence_mode: str = "real") -> Dict[str, Any]:
+    """给前端返回的决策对象：剔除内部字段 + 补充展示元数据 + Runtime Audit。
+
+    V0.3.1.3：context.evidence_mode 以 DecisionService（Adapter）算出的
+    HISTORICAL_SNAPSHOT / LIVE / NONE 为准（Web 参数 real/offline 只用于选 adapter），
+    此处**不覆盖**。
+    """
     dec = dict(dec)
     dec.pop("_post_inputs", None)
     if dec.get("context"):
         dec["context"] = dict(dec["context"])
-        dec["context"]["evidence_mode"] = evidence_mode
+        # 保留 service 计算的 context.evidence_mode（Adapter 填写），不覆盖
+        dec["context"]["evidence_mode"] = dec["context"].get("evidence_mode", evidence_mode)
     av_map = _availability_map() if _availability_map else {}
     feats = []
     dd = str(dec.get("context", {}).get("decision_date", ""))[:10]
@@ -695,7 +757,7 @@ def _prepare_decision(dec: Dict[str, Any], evidence_mode: str) -> Dict[str, Any]
     audit["runtime"] = _runtime_audit(dec)
     audit["overall"] = audit["runtime"]["overall"]
     dec["audit"] = audit
-    dec["warnings"] = _decision_warnings(dec, evidence_mode)
+    dec["warnings"] = _decision_warnings(dec)
     return dec
 
 
@@ -800,7 +862,7 @@ def api_meta():
     llm_connected = bool(llm.get("configured")) and not bool(llm.get("degraded"))
     return jsonify({
         "app": "CAISO Trading Decision Agent · Web MVP",
-        "web_version": "V0.3.1.1",
+        "web_version": MVP_LABEL,
         "alpha_label": ALPHA_LABEL,
         "cutoff_desc": DECISION_CUTOFF_DESC,
         "data_mode": _data_mode(),
@@ -817,9 +879,10 @@ def api_meta():
         "llm": llm,
         "default_evidence": DEFAULT_EVIDENCE,
         "evidence_modes": [
-            {"id": "real", "label": "实时 GFS（真实证据，需网络；失败诚实降级为空）"},
-            {"id": "offline", "label": "离线静态（不取外部证据，纯本地演示）"},
+            {"id": "real", "label": "真实证据（DEMO=历史 GFS 快照 HISTORICAL_SNAPSHOT / FULL=实时 GFS LIVE）"},
+            {"id": "offline", "label": "离线静态 NONE（不取外部证据，纯本地演示）"},
         ],
+        "evidence_mode_default": ("HISTORICAL_SNAPSHOT" if _data_mode() == MODE_DEMO else "LIVE"),
         # MVP Status（V0.3.1.1 诚实状态栏，不误导业务方）
         "mvp_status": {
             "model_alpha": ALPHA_LABEL,
@@ -838,7 +901,9 @@ def api_meta():
             "NO_TRADE": "0",
         },
         "versions": {
-            "market_rule": MARKET_RULE_VERSION,
+            # V0.3.1.3：不暴露固定 PRE/POST 值误导用户；单笔页面一律展示
+            # DecisionSnapshot.context.market_rule_version（date-aware）。
+            "market_rule": "MARKET_RULE_VERSIONING_ENABLED（date-aware，单笔见决策上下文）",
             "model": MODEL_VERSION,
             "rule_engine": RULE_ENGINE_VERSION,
             "risk_gate": RISK_GATE_VERSION,

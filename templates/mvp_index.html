@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CAISO Trading Decision Agent · Web MVP</title>
+<title>CAISO Trading Decision Agent MVP · Demo Freeze（V0.3.1.2）</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='mvp.css') }}">
 </head>
 <body>
@@ -12,7 +12,7 @@
   <!-- ============ Header ============ -->
   <header>
     <div>
-      <h1>CAISO Trading Decision Agent <span class="tag">Web MVP · 白盒决策 Agent</span></h1>
+      <h1>CAISO Trading Decision Agent <span class="tag">MVP · Demo Freeze Build（V0.3.1.2）</span></h1>
       <div class="sub">
         Model → Evidence → Time Gate → Case → Risk Gate → Rule Engine → <b>BUY / SELL / NO_TRADE</b> → Human → Lock → Reveal → PnL → Review
         &nbsp;·&nbsp; Return = DA − RTPD（$/MWh）
@@ -26,7 +26,7 @@
     </div>
   </header>
 
-  <!-- ============ MVP Status（V0.3.1.1 诚实状态栏 · 不误导业务方） ============ -->
+  <!-- ============ MVP Status（诚实状态栏 · 不误导业务方） ============ -->
   <div class="card mvp-status" id="mvp-status">
     <h2><span class="sec">MVP STATUS</span> <span class="hint">诚实状态栏 · 不误导业务方</span></h2>
     <div class="status-grid" id="mvp-status-grid"><div class="empty">加载中…</div></div>
@@ -175,10 +175,15 @@ const PILL = {
 /* ============ init ============ */
 function renderMvpStatus(meta) {
   const s = meta.mvp_status || {};
+  // V0.3.1.3：EVIDENCE MODE 随证据选择实时显示（HISTORICAL_SNAPSHOT / LIVE / NONE）
+  const em = state.evidence === "offline"
+    ? "NONE"
+    : (meta.evidence_mode_default || "LIVE");
   const items = [
     ["MODEL ALPHA", s.model_alpha || "—", (s.model_alpha || "") === "WEAK" ? "warn" : ""],
     ["PROFITABILITY VERIFIED", s.profitability_verified || "NO", (s.profitability_verified || "") === "YES" ? "ok" : "no"],
     ["DATA MODE", s.data_mode || "DEMO", (s.data_mode || "") === "FULL" ? "ok" : "warn"],
+    ["EVIDENCE MODE", em, em === "HISTORICAL_SNAPSHOT" ? "ok" : (em === "LIVE" ? "" : "warn")],
     ["LLM", s.llm || "NOT CONFIGURED", (s.llm || "") === "CONNECTED" ? "ok" : "warn"],
     ["AUTO TRADING", s.auto_trading || "DISABLED", (s.auto_trading || "") === "ENABLED" ? "no" : "warn"],
     ["SETTLEMENT", s.settlement || "SIMPLIFIED SIGNAL BACKTEST", ""]
@@ -226,7 +231,7 @@ async function init() {
     });
     const defEv = meta.default_evidence || "real";
     state.evidence = defEv; ev.value = defEv;
-    ev.addEventListener("change", () => { state.evidence = ev.value; });
+    ev.addEventListener("change", () => { state.evidence = ev.value; renderMvpStatus(meta); });
     // llm badge（以 mvp_status.llm 为准：CONNECTED / NOT CONFIGURED）
     const llm = meta.llm || {};
     const ms = meta.mvp_status || {};
@@ -304,8 +309,17 @@ function renderDecision() {
 }
 
 /* ---- Section 1: Decision Context ---- */
+function evModeLabel(mode) {
+  const M = {
+    "HISTORICAL_SNAPSHOT": "HISTORICAL SNAPSHOT（真实历史 GFS 快照，可重复）",
+    "LIVE": "LIVE（实时 GFS 采集）",
+    "NONE": "NONE（离线静态，不取外部证据）"
+  };
+  return M[mode] || mode || "—";
+}
 function renderS1() {
   const c = state.decision.context, m = state.meta;
+  const prov = c.evidence_provenance || {};
   const items = [
     ["Decision Date", c.decision_date],
     ["Decision Cutoff", `${c.decision_cutoff_pt}（${m.cutoff_desc}）`],
@@ -315,15 +329,17 @@ function renderS1() {
     ["Node", `${c.node}`],
     ["Zone", c.zone],
     ["Data Mode", m.data_mode || (m.mvp_status || {}).data_mode || "—"],
-    ["Market Rule Version", m.versions.market_rule],
+    ["Market Rule Version", esc(c.market_rule_version || "—"), "date-aware：DecisionSnapshot.context（非全局固定值）"],
+    ["Evidence Mode", evModeLabel(c.evidence_mode || m.evidence_mode_default)],
+    ["Evidence Source", esc(prov.source || "—")],
+    ["Historical Snapshot", prov.historical_snapshot ? `TRUE（contains_mock=${prov.contains_mock === false ? "false" : "?"}，hash=${esc((prov.artifact_hash || "").slice(0, 12))}…）` : "—"],
     ["Model Version", m.versions.model],
     ["Risk Gate Version", m.versions.risk_gate],
     ["Rule Engine Version", m.versions.rule_engine],
-    ["Evidence Mode", state.evidence === "offline" ? "offline（静态，不取外部证据）" : "real（GFS / 失败诚实降级）"],
     ["Decision Status", state.locked ? '<span class="pill LOCKED">LOCKED</span>' : '<span class="pill UNLOCKED">UNLOCKED</span>'],
     ["Decision ID", `<code>${esc(state.decision_id)}</code>`]
   ];
-  const grid = items.map(([k, v]) => `<div class="item"><div class="k">${esc(k)}</div><div class="v">${v}</div></div>`).join("");
+  const grid = items.map(([k, v, hint]) => `<div class="item"><div class="k">${esc(k)}</div><div class="v">${v}${hint ? `<div class="muted" style="font-size:11.5px">${esc(hint)}</div>` : ""}</div></div>`).join("");
   return section("S1", "Decision Context（决策上下文）", "Available information only as of 10:00 PT",
     `<div class="kv">${grid}</div>
      <div class="notice" style="margin-top:12px"><span class="tag">约束</span>
@@ -386,7 +402,7 @@ function renderS3() {
   const items = [
     ["expected_return", `${fmt(mo.expected_return, 2)} $/MWh`, "Return = DA − RTPD 预期幅度（中位数目标）"],
     ["direction_probability", fmtP(mo.direction_probability), `P(押注方向 ${esc(mo.direction || "?")})`],
-    ["model_signal_strength", fmtP(mo.model_signal_strength), "方向概率强度 × 幅度信噪比组合量，非校准概率（V0.2 起不称 confidence）"],
+    ["model_signal_strength", fmtP(mo.model_signal_strength), "方向概率强度 × 幅度信噪比组合量，非校准信号强度（不称 confidence）"],
     ["uncertainty", fmtP(mo.uncertainty), "0-1，q10/q90 区间宽度相对分布尺度的归一化"],
     ["prob_positive", fmtP(mo.prob_positive), "P(Return > 0)"],
     ["prob_negative", fmtP(mo.prob_negative), "P(Return ≤ 0)"]
@@ -431,16 +447,29 @@ function renderS4() {
   } else {
     html += `<div class="empty">NO ELIGIBLE EXTERNAL EVIDENCE —— 决策时点（10:00 PT）前无可用真实外部证据。<br>不编造证据：宁可未知，不可乱判方向。</div>`;
   }
-  html += `<div style="height:10px"></div><div class="sub" style="font-weight:600">▶ POST-DECISION / REJECTED（晚于 cutoff 或被隔离 → 只进复盘，绝不进入决策）</div>`;
+  html += `<div style="height:10px"></div><div class="sub" style="font-weight:600">▶ POST-DECISION / REJECTED（available_at 晚于 cutoff 或不可证 → 只进复盘，绝不进入决策）</div>`;
   if (rej.length) {
-    html += `<div class="ev-list">` + rej.map(e => `
-      <div class="ev-item bad">
+    html += `<div class="ev-list">` + rej.map(e => {
+      const avail = e.available_at || "—";
+      const cut = e.decision_cutoff || "—";
+      const afterCutoff = e.available_at && e.decision_cutoff
+        && new Date(e.available_at) > new Date(e.decision_cutoff);
+      const bizNote = afterCutoff
+        ? "业务解释：该证据虽然与目标时段有关，但在报价截止之后才可获得，因此没有参与当时的交易判断。"
+        : (e.available_at
+          ? "业务解释：该证据未通过 Evidence Time Gate，未参与当时的交易判断。"
+          : "业务解释：该证据无已证可用时刻（MISSING_AVAILABLE_AT），未参与当时的交易判断。");
+      return `<div class="ev-item bad">
         <div class="head"><span class="src">[${esc(e.event_type)}/${esc(e.severity)}] ${esc(e.source)}</span>
-          ${e.is_mock ? '<span class="tag-soft rej">MOCK</span>' : ""}</div>
+          ${e.is_mock ? '<span class="tag-soft rej">MOCK</span>' : ""}
+          <span class="tag-soft rej">NOT USED</span></div>
         <div class="summary">${esc(e.summary)}</div>
-        <div class="meta">published_at: ${esc(e.published_at || "—")} · decision_cutoff: ${esc(e.decision_cutoff || "—")}</div>
-        <div class="reject">NOT USED —— ${esc(e.rejection_reason || "被 Evidence Time Gate 隔离")}</div>
-      </div>`).join("") + `</div>`;
+        <div class="meta">Forecast Run / Init Time: ${esc(e.initialization_time || "—")} · Published At: ${esc(e.published_at || "—")} · Retrieved At: ${esc(e.retrieved_at || "—")}</div>
+        <div class="meta">Available At: <b>${esc(avail)}</b> · Decision Cutoff: <b>${esc(cut)}</b></div>
+        <div class="meta">Decision Eligible: <b>NO</b> · Reason: <b>${esc(e.rejection_reason || "被 Evidence Time Gate 隔离")}</b></div>
+        <div class="muted" style="font-size:12px;margin-top:4px">${esc(bizNote)}</div>
+      </div>`;
+    }).join("") + `</div>`;
   } else {
     html += `<div class="empty">本决策日未获取到晚于 cutoff 的真实证据。</div>`;
   }
@@ -666,7 +695,7 @@ function renderRevealFilled() {
      <div class="ev-list">${notes.length ? notes.map(n => `<div class="ev-item"><div class="summary">${esc(n)}</div></div>`).join("") : `<div class="empty">（无附加复盘说明）</div>`}</div>`);
 }
 
-/* ---- Audit（V0.3.1.1：真实运行审计，OVERALL 服务端计算，页面不写死 PASS） ---- */
+/* ---- Audit（真实运行审计，OVERALL 服务端计算，页面不写死 PASS） ---- */
 function renderAudit() {
   const a = state.decision.audit || {};
   const rt = a.runtime || {};

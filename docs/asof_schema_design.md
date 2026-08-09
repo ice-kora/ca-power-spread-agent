@@ -1,5 +1,17 @@
 # As-of 数据结构设计（Agent D · 可追溯 / 防穿越数据层）
 
+> ## SUPERSEDED / HISTORICAL DESIGN RECORD
+>
+> 本文档是 **V0.2** As-of 数据结构**设计稿**，**NOT CURRENT IMPLEMENTATION**。
+> 其核心语义（`available_at <= decision_cutoff`、GFS 00Z/06Z 可回测、12Z/18Z 无可靠 vintage 不可回测）
+> 已在当前实现落地，但以**实现代码为准**：
+> - 当前 Time Gate 唯一判据：`agent/evidence/time_gate.py` + `agent/evidence/schema.py`
+>   （available-at-only，缺失 → MISSING_AVAILABLE_AT，不 fallback published_at）
+> - 当前采集实现：`code/data_acquisition/weather_gfs.py`（GFSWeatherCollector）
+> - 当前市场规则版本：`code/market_rules.py`（`market_rule_version_for(date)`，date-aware）
+>
+> V0.2 设计稿保留用于项目演进溯源。
+
 > 作者：Agent D（As-of 数据结构设计师）｜ 日期：2026-08-09
 > 版本：asof_v1 ｜ 配套代码：`code/data_acquisition/schemas.py` + `test_schemas.py`
 > 范围：**只定义数据结构、采集模式、feature_snapshot 标准；不改模型 / 回测 / 现有 evidence 层**。

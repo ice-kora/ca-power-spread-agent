@@ -230,11 +230,12 @@ class V0311HardeningTests(unittest.TestCase):
         self.assertEqual(b["available_at"], "2026-07-08T10:30:00")
         self.assertNotEqual(b["published_at"], b["available_at"])
         self.assertEqual(b["available_at_source"], "available_at")
-        # 无 available_at → 回退 published_at 且诚实标注来源
+        # V0.3.1.3：无 available_at 但有 published_at → Schema 入口**显式迁移**
+        # available_at = published_at（诚实标注 source）；绝不隐式回退到 initialization_time
         n = rows["EV-NO-AVAIL"]
         self.assertEqual(n["published_at"], PRE_CUTOFF)
-        self.assertEqual(n["available_at"], PRE_CUTOFF)
-        self.assertEqual(n["available_at_source"], "published_at")
+        self.assertEqual(n["available_at"], PRE_CUTOFF)          # 显式迁移 available_at=published_at
+        self.assertEqual(n["available_at_source"], "published_at（显式迁移）")
         # 决策路径（eligible）无 MOCK，Time Gate 正常
         self.assertTrue(all(rr["decision_eligible"] for rr in rows.values()))
 
@@ -308,13 +309,14 @@ class V0311HardeningTests(unittest.TestCase):
         self.assertIn('if "FAIL" in statuses', src)
         self.assertIn('elif "WARNING" in statuses', src)
         self.assertIn("overall = \"PASS\"", src)   # 仅作为推导末枝存在
-        # 2) 健康决策 → 5/5 PASS，且 OVERALL == 由 check_list 推导的结果
+        # 2) 健康决策 → 全部检查 PASS（V0.3.1.3 含 Evidence Availability/Provenance），
+        #    且 OVERALL == 由 check_list 推导的结果（summary 动态，不写死 5/5）
         svc = make_svc()
         dec = svc.run_decision(DD, NODE, HOUR)
         audit = dec["audit"]
-        self.assertEqual(audit["summary"], "5/5 PASS")
-        self.assertEqual(audit["overall"], "PASS")
         checks = list(audit["checks"].values())
+        self.assertEqual(audit["summary"], f"{len(checks)}/{len(checks)} PASS")
+        self.assertEqual(audit["overall"], "PASS")
         statuses = [ch["status"] for ch in checks]
         derived = "FAIL" if "FAIL" in statuses else ("WARNING" if "WARNING" in statuses else "PASS")
         self.assertEqual(audit["overall"], derived)   # 由真实结果推导，非写死

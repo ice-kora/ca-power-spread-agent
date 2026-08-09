@@ -82,18 +82,22 @@ def _ts_le(value: Any, cutoff: Any) -> bool:
 
 
 def _effective_available_at(ev: Dict[str, Any]) -> str:
-    """Time Gate 真正用的 available_at：优先 available_at，缺失回退 published_at。"""
-    return str(ev.get("available_at") or ev.get("published_at") or "").strip()
+    """V0.3.1.3 收口：Time Gate 唯一判据 = available_at（缺失即无，**不 fallback** published_at）。"""
+    return str(ev.get("available_at") or "").strip()
 
 
 def _check(check_id: str, label: str, checked_count: int, failed_count: int,
-           status: str, reason: str = "") -> Dict[str, Any]:
+           reason: str = "", warn_count: int = 0) -> Dict[str, Any]:
+    """构造审计项；status 由真实计数推导（FAIL > WARNING > PASS），不写死。"""
+    status = ("FAIL" if failed_count > 0
+              else ("WARNING" if warn_count > 0 else "PASS"))
     return {
         "check_id": check_id,
         "label": label,
-        "status": status,                      # PASS / WARNING / FAIL
+        "status": status,                      # 真实推导，禁止硬编码
         "checked_count": int(checked_count),
         "failed_count": int(failed_count),
+        "warn_count": int(warn_count),
         "reason": reason,
     }
 
@@ -113,54 +117,58 @@ def audit_feature_eligibility(features: Sequence[Dict[str, Any]],
     if violations:
         return _check(
             "feature_eligibility", "Feature Eligibility",
-            len(feats), len(violations), "FAIL",
+            len(feats), len(violations),
             reason="Feature Time Gate 违反 P0-2（decision_eligible=True 但 available_at "
                    "上界缺失或晚于 decision_cutoff）: " + "; ".join(violations[:5]),
         )
     return _check(
         "feature_eligibility", "Feature Eligibility",
-        len(feats), 0, "PASS",
+        len(feats), 0,
         reason=f"全部 {len(feats)} 个决策特征可用上界 <= decision_cutoff（P0-2 展示==判定）",
     )
 
 
 def audit_evidence_time_gate(evidence_section: Dict[str, Any],
                              decision_cutoff: Optional[str]) -> Dict[str, Any]:
-    """检查 2：Evidence Time Gate。
+    """检查 2：Evidence Time Gate（V0.3.1.3 available-at-only）。
 
-    - eligible 中每条：effective available_at <= decision_cutoff 且非 MOCK。
-    - rejected 中每条（非 MOCK）：effective available_at 必须晚于 cutoff
-      （否则它本应 eligible —— 是泄漏 / 误标）。
+    - eligible 中每条：必须 available_at <= decision_cutoff 且非 MOCK；
+      available_at 缺失（MISSING_AVAILABLE_AT）→ FAIL（eligible 不该出现）。
+    - rejected 中每条（非 MOCK）：available_at 必须晚于 cutoff（否则本应
+      eligible —— 泄漏 / 误标）；available_at 缺失（正确隔离但无已证可用时刻）
+      → WARNING（诚实标注，不影响隔离）。
     """
     sec = evidence_section or {}
     eligible = list(sec.get("eligible", []) or [])
     rejected = list(sec.get("rejected", sec.get("post_decision", [])) or [])
     checked = eligible + rejected
     fails: List[str] = []
+    warns: List[str] = []
     for e in eligible:
         eid = str(e.get("evidence_id", "?"))
         if e.get("is_mock"):
             fails.append(f"eligible 含 MOCK: {eid}")
+            continue
         avail = _effective_available_at(e)
-        if not _ts_le(avail, decision_cutoff):
+        if not avail:
+            fails.append(f"eligible 无 available_at（MISSING_AVAILABLE_AT）: {eid}")
+        elif not _ts_le(avail, decision_cutoff):
             fails.append(f"eligible 的 available_at({avail}) > decision_cutoff({decision_cutoff}): {eid}")
     for e in rejected:
         eid = str(e.get("evidence_id", "?"))
         if e.get("is_mock"):
             continue  # MOCK 隔离桶合法
         avail = _effective_available_at(e)
-        if _ts_le(avail, decision_cutoff):
+        if not avail:
+            warns.append(f"rejected 无已证 available_at（MISSING_AVAILABLE_AT，正确隔离不进决策）: {eid}")
+        elif _ts_le(avail, decision_cutoff):
             fails.append(f"rejected 却可在 cutoff 前使用（available_at={avail}<=cutoff）→ 泄漏/误标: {eid}")
-    if fails:
-        return _check(
-            "evidence_time_gate", "Evidence Time Gate",
-            len(checked), len(fails), "FAIL",
-            reason="Evidence Time Gate 不一致: " + "; ".join(fails[:5]),
-        )
     return _check(
         "evidence_time_gate", "Evidence Time Gate",
-        len(checked), 0, "PASS",
-        reason=f"{len(eligible)} eligible / {len(rejected)} rejected，时间门槛与 MOCK 隔离一致",
+        len(checked), len(fails),
+        reason=("Evidence Time Gate 不一致: " + "; ".join(fails[:5])) if fails
+               else f"{len(eligible)} eligible / {len(rejected)} rejected，时间门槛与 MOCK 隔离一致",
+        warn_count=len(warns),
     )
 
 
@@ -195,12 +203,12 @@ def audit_mock_data(features: Sequence[Dict[str, Any]],
     mock_in_rejected = sum(1 for e in rejected if e.get("is_mock"))
     if fails:
         return _check(
-            "mock_data", "Mock Data", checked, len(fails), "FAIL",
+            "mock_data", "Mock Data", checked, len(fails),
             reason="决策路径出现 MOCK（仅 rejected 隔离桶允许）: " + "; ".join(fails[:5]),
         )
     note = f"（另 {mock_in_rejected} 条 MOCK 在 rejected 隔离桶，合法）" if mock_in_rejected else ""
     return _check(
-        "mock_data", "Mock Data", checked, 0, "PASS",
+        "mock_data", "Mock Data", checked, 0,
         reason=f"决策路径（features/eligible/rule_engine）无 MOCK{note}",
     )
 
@@ -216,11 +224,11 @@ def audit_case_asof(cases: Sequence[Dict[str, Any]],
             fails.append(f"case 不可检索（case_available_at > decision_time 或缺省）: {cid}")
     if fails:
         return _check(
-            "case_asof", "Case As-of", len(cxs), len(fails), "FAIL",
+            "case_asof", "Case As-of", len(cxs), len(fails),
             reason="相似案例穿越决策时点: " + "; ".join(fails[:5]),
         )
     return _check(
-        "case_asof", "Case As-of", len(cxs), 0, "PASS",
+        "case_asof", "Case As-of", len(cxs), 0,
         reason=f"全部 {len(cxs)} 个相似案例 case_available_at <= decision_time({decision_time})",
     )
 
@@ -241,11 +249,11 @@ def audit_outcome_leakage(decision_obj: Dict[str, Any],
                 missing.append(name)
         if missing:
             return _check(
-                "outcome_leakage", "Outcome Leakage", len(checks), len(missing), "FAIL",
+                "outcome_leakage", "Outcome Leakage", len(checks), len(missing),
                 reason="outcome_revealed=True 但缺少 " + ", ".join(missing),
             )
         return _check(
-            "outcome_leakage", "Outcome Leakage", len(checks), 0, "PASS",
+            "outcome_leakage", "Outcome Leakage", len(checks), 0,
             reason="已 reveal：outcome 与 post_trade_review 齐备，actual_* 仅在 outcome 段",
         )
 
@@ -271,12 +279,86 @@ def audit_outcome_leakage(decision_obj: Dict[str, Any],
     checked = sum(visited.values())
     if leaks:
         return _check(
-            "outcome_leakage", "Outcome Leakage", checked, len(leaks), "FAIL",
+            "outcome_leakage", "Outcome Leakage", checked, len(leaks),
             reason="未 reveal 却出现 actual_*/pnl: " + "; ".join(leaks[:5]),
         )
     return _check(
-        "outcome_leakage", "Outcome Leakage", checked, 0, "PASS",
+        "outcome_leakage", "Outcome Leakage", checked, 0,
         reason=f"未 reveal：遍历 {checked} 个字段未发现 actual_*/pnl 泄漏",
+    )
+
+
+# ---------------------------------------------------------------------------
+# 检查 6 / 7：Evidence Availability + Provenance（V0.3.1.3 收口）
+# ---------------------------------------------------------------------------
+def audit_evidence_availability(evidence_section: Dict[str, Any],
+                                decision_cutoff: Optional[str]) -> Dict[str, Any]:
+    """检查 6：Evidence Availability —— 每条证据必须有已证 available_at。
+
+    available_at 缺失（无已证可用时刻）→ WARNING（诚实标注；该类证据已被 Time Gate
+    隔离不进决策，provenance 存疑但不泄漏）。V0.3.1.3 available-at-only 收口。
+    """
+    sec = evidence_section or {}
+    eligible = list(sec.get("eligible", []) or [])
+    rejected = list(sec.get("rejected", sec.get("post_decision", [])) or [])
+    all_ev = eligible + rejected
+    missing = [str(e.get("evidence_id", "?")) for e in all_ev
+               if not _effective_available_at(e)]
+    if missing:
+        return _check(
+            "evidence_availability", "Evidence Availability",
+            len(all_ev), 0,
+            reason=(f"{len(missing)} 条证据无已证 available_at"
+                    f"（MISSING_AVAILABLE_AT / AVAILABILITY_NOT_PROVEN，已隔离不进决策）: "
+                    + "; ".join(missing[:5])),
+            warn_count=len(missing),
+        )
+    return _check(
+        "evidence_availability", "Evidence Availability",
+        len(all_ev), 0,
+        reason=f"全部 {len(all_ev)} 条证据均有已证 available_at（Time Gate 唯一判据）",
+    )
+
+
+def audit_evidence_provenance(evidence_section: Dict[str, Any],
+                              evidence_provenance: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """检查 7：Evidence Provenance —— 来源 / 类型 / 快照声明齐备且真实。
+
+    - 每条证据要求 source / source_type 齐备（缺失 → WARNING）。
+    - eligible 证据不得为 MOCK（provenance 违规）。
+    - 若为 Historical Evidence Snapshot（evidence_provenance.historical_snapshot=True）：
+      必须 contains_mock=False、hash_normalization=canonical-text、artifact_hash 存在。
+    """
+    sec = evidence_section or {}
+    eligible = list(sec.get("eligible", []) or [])
+    rejected = list(sec.get("rejected", sec.get("post_decision", [])) or [])
+    all_ev = eligible + rejected
+    fails: List[str] = []
+    warns: List[str] = []
+    elig_ids = {str(e.get("evidence_id")) for e in eligible}
+    for e in all_ev:
+        eid = str(e.get("evidence_id", "?"))
+        if not str(e.get("source") or "").strip():
+            warns.append(f"证据缺 source: {eid}")
+        if not str(e.get("source_type") or "").strip():
+            warns.append(f"证据缺 source_type: {eid}")
+        if e.get("is_mock") and eid in elig_ids:
+            fails.append(f"eligible 证据 is_mock=True（provenance 违规）: {eid}")
+    prov = evidence_provenance or {}
+    checked = len(all_ev)
+    if prov.get("historical_snapshot"):
+        checked += 1  # +1 快照声明
+        if prov.get("contains_mock"):
+            fails.append("Historical Evidence Snapshot 声明 contains_mock=True（违反诚实声明）")
+        if not prov.get("artifact_hash"):
+            warns.append("Historical Evidence Snapshot 缺 artifact_hash（无法核对快照完整性）")
+    return _check(
+        "evidence_provenance", "Evidence Provenance",
+        checked, len(fails),
+        reason=("Evidence Provenance 违规: " + "; ".join(fails[:5])) if fails
+               else ("证据来源 / 类型 / 快照声明齐备"
+                     + ("，Historical Snapshot contains_mock=False 已验证" if prov.get("historical_snapshot") else "")),
+        warn_count=len(warns),
     )
 
 
@@ -293,11 +375,14 @@ def run_runtime_audit(
     decision_obj: Dict[str, Any],
     outcome_revealed: bool,
     rule_engine_out: Optional[Dict[str, Any]] = None,
+    evidence_provenance: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """对一次决策运行全部运行时检查，OVERALL 由真实结果计算（不硬编码）。"""
     checks: List[Dict[str, Any]] = [
         audit_feature_eligibility(features, decision_cutoff),
         audit_evidence_time_gate(evidence_section, decision_cutoff),
+        audit_evidence_availability(evidence_section, decision_cutoff),
+        audit_evidence_provenance(evidence_section, evidence_provenance),
         audit_mock_data(features, evidence_section, rule_engine_out),
         audit_case_asof(cases, decision_time),
         audit_outcome_leakage(decision_obj, outcome_revealed),

@@ -288,6 +288,33 @@ def _write_metadata(info: Dict[str, Path], row_counts: Dict[str, int],
         json.dumps(meta, ensure_ascii=False, indent=2).encode("utf-8"))
 
 
+def _evidence_demo_meta() -> Optional[Dict[str, Any]]:
+    """读取 evidence_demo.json 的 Provenance 元数据（V0.3.1.3 需求六）。
+
+    manifest 登记 evidence_demo.json：source / source_timestamp / artifact_hash /
+    hash_normalization / contains_mock=false / historical_snapshot=true /
+    raw_source_id。artifact_hash 取文档内部"内容哈希"（不含 hash 字段自身）。
+    """
+    p = OUT_DIR / "evidence_demo.json"
+    if not p.exists():
+        return None
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return {
+        "source": str(doc.get("source", "")),
+        "source_timestamp": str(doc.get("source_timestamp", "")),
+        "artifact_hash": str(doc.get("artifact_hash", "")),
+        "hash_algorithm": str(doc.get("hash_algorithm", HASH_ALGORITHM)),
+        "hash_normalization": str(doc.get("hash_normalization", HASH_NORMALIZATION)),
+        "contains_mock": bool(doc.get("contains_mock", False)),
+        "historical_snapshot": bool(doc.get("historical_snapshot", False)),
+        "raw_source_id": str(doc.get("raw_source_id", "")),
+        "records_n": len(doc.get("records", []) or []),
+    }
+
+
 def _write_manifest(row_counts: Dict[str, int], out_hashes: Dict[str, str],
                     src_hashes: Dict[str, str], cases: List[Dict[str, Any]]) -> None:
     manifest = {
@@ -314,7 +341,9 @@ def _write_manifest(row_counts: Dict[str, int], out_hashes: Dict[str, str],
             "risk_features_demo.parquet": "Golden Cases Risk Gate 风险特征切片",
             "cases_demo.json": "Golden Cases 案例库切片（真实，as-of）",
             "metadata.json": "生成信息 / 哈希 / 行数 / 诚实声明",
+            "evidence_demo.json": "Golden Case E 真实历史 GFS Evidence Snapshot（18Z，available_at>cutoff）",
         },
+        "evidence_snapshot": _evidence_demo_meta(),
         "note": "在完整数据机上运行 python build_demo_artifacts.py 生成；clean clone 可直接以 DEMO 模式启动。",
     }
     (OUT_DIR / "manifest.json").write_bytes(
@@ -386,6 +415,9 @@ def main() -> int:
         "risk_features_demo.parquet": OUT_DIR / "risk_features_demo.parquet",
         "cases_demo.json": OUT_DIR / "cases_demo.json",
     }
+    ev_demo = OUT_DIR / "evidence_demo.json"
+    if ev_demo.exists():                       # V0.3.1.3：Golden Case E 真实 GFS Snapshot
+        out_files["evidence_demo.json"] = ev_demo
     out_hashes = {k: _sha256(Path(v)) for k, v in out_files.items()}
     for k, h in src_hashes.items():
         print(f"    · source {k:<34} {h[:16]}…")

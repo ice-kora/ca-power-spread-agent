@@ -1,12 +1,13 @@
-# CAISO 价差交易决策辅助 · V0.3.1（Web + LLM Agent MVP）
+# CAISO 价差交易决策辅助 · V0.3.1.2（Demo Freeze）
 
-预测 CAISO 日前（DA）与实时（RTPD）价差 `Return = DA − RTPD` 的方向与幅度，辅助 **SELL_DA / BUY_DA / NO_TRADE** 交易决策。V0.3.1 把 V0.2 的白盒决策链封装成**浏览器可用的 Decision Workspace + 自然语言 Ask Trading Agent**：选案例 → RUN → LOCK → REVEAL → ASK → BRIEF，全流程可审计、可解释、不穿越。
+预测 CAISO 日前（DA）与实时（RTPD）价差 `Return = DA − RTPD` 的方向与幅度，辅助 **SELL_DA / BUY_DA / NO_TRADE** 交易决策。V0.3.1 把 V0.2 的白盒决策链封装成**浏览器可用的 Decision Workspace + 自然语言 Ask Trading Agent**：选案例 → RUN → LOCK → REVEAL → ASK → BRIEF，全流程可审计、可解释、不穿越。V0.3.1.3（Demo Freeze Polish）统一了跨平台哈希、available-at-only Time Gate、Golden Case E 稳定证据演示与版本号。
 
 > **诚实标注（请先读）**
 > - **MODEL SIGNAL IS EXPERIMENTAL / CURRENT ALPHA = WEAK** —— 模型信号是实验性的，当前能力很弱。
 > - **Signal / Strategy MVP，不是已验证盈利系统** —— 这是演示/研究系统，不是能保证赚钱的交易软件。
 > - **LLM 不决定方向** —— 交易方向一律由白盒 DecisionService + 6 个结构化 Tool 程序化决定；LLM 只做解释，且不能修改/覆盖工具返回的数字与最终建议（程序化完整性守卫拦截）。
 > - **决策路径无 MOCK** —— 特征、证据、历史案例全部真实且 as-of；无真实证据时诚实显示 `NO ELIGIBLE EXTERNAL EVIDENCE`，绝不编造。
+> - **DEMO 证据是真实历史快照** —— DEMO MODE 用 `demo_artifacts/evidence_demo.json`（真实历史 GFS 18Z 快照，可重复、不依赖现场网络），页面明确标注 `EVIDENCE MODE: HISTORICAL SNAPSHOT`，绝不写成实时。
 
 ---
 
@@ -57,12 +58,14 @@ python mvp_web.py --offline
 
 | 步骤 | 操作 | 说明 |
 |---|---|---|
-| ① **选案例** | 顶部"黄金案例"（B/C1/C2/D/E）或自定义 `decision_date × node × hour`，选证据模式（实时 GFS / 离线静态） | 合法决策日 ≈ `2026-06-01 ~ 2026-08-04`（test 窗口）；三节点 `CONTROLX_1_N001`、`SNLNDRO_1_N001`（ZP26）、`ELCAJNGT_7_N001`（SP15 冷启动） |
+| ① **选案例** | 顶部"黄金案例"（B/C1/C2/D/E）或自定义 `decision_date × node × hour`，选证据模式（真实证据 / 离线静态） | 合法决策日 ≈ `2026-06-01 ~ 2026-08-04`（test 窗口）；三节点 `CONTROLX_1_N001`、`SNLNDRO_1_N001`（ZP26）、`ELCAJNGT_7_N001`（SP15 冷启动）。**证据模式**：DEMO MODE 用真实历史 GFS 快照（`EVIDENCE MODE: HISTORICAL SNAPSHOT`，可重复、不依赖现场网络）；FULL MODE 用实时 GFS（`LIVE`）；离线静态（`NONE`） |
 | ② **RUN** | 点 RUN DECISION | 服务端跑完整白盒决策链，返回结构化决策对象（模型/证据/案例/风控/规则/最终建议） |
 | ③ **LOCK** | 点 LOCK DECISION | **锁定决策**。锁定前系统绝不展示任何 actual/outcome |
 | ④ **REVEAL** | 点 REVEAL ACTUAL OUTCOME（仅锁定后可点） | 揭晓真实 DA/RTPD/Return，算 PnL（1 MWh）与复盘分类 |
 | ⑤ **ASK** | Ask Trading Agent 面板输入自然语言问题 | LLM 经 6 个 Tool 取事实回答并展示 **Agent Trace**；无 Key 时诚实显示 `LLM NOT CONFIGURED` |
 | ⑥ **BRIEF** | GENERATE DAILY BRIEF | 扫描指定日全部已生成决策，输出 BUY/SELL/NO_TRADE 汇总、Top 机会、Top 风险 |
+
+**Golden Case E（稳定演示 "防信息穿越"）**：DEMO MODE 下选择案例 E（2026-07-08 CONTROLX H2），页面显示一条**真实历史 GFS 18Z 预报快照**（`EVIDENCE MODE: HISTORICAL SNAPSHOT`），明确展示 Forecast Run / Published At / Available At / Decision Cutoff → `Available At 晚于 Cutoff` → `Decision Eligible: NO` → `Reason: AVAILABLE_AFTER_CUTOFF` → `NOT USED`。该证据**不进入** Risk Gate / Rule Engine / 最终建议——交易结果与无证据时完全一致（不穿越、可重复、可现场审计）。
 
 ## 4. 每块内容是什么意思（速查表）
 
@@ -80,6 +83,8 @@ python mvp_web.py --offline
 | reason_code | 规则命中的编号 | 审计用（页面有业务翻译） |
 | Agent Trace | LLM 一次问答的工具调用流水 | 谁调了什么工具、返回了什么 |
 | availability_basis | 特征可用性依据（STATIC/STRUCTURAL_LAG/ASSUMED_AVAILABLE/…） | 展示口径 == Time Gate 判定口径 |
+| EVIDENCE MODE | 证据来源模式：HISTORICAL SNAPSHOT（真实历史 GFS 快照）/ LIVE（实时 GFS）/ NONE（离线） | DEMO 用历史快照可重复、不依赖现场网络；绝不把快照写成实时 |
+| Market Rule Version | 单笔决策的市场规则版本（date-aware，按 target_date 判定） | 2026-05-01 边界 → `POST_DAME_EDAM_2026`；展示值 == DecisionSnapshot.context |
 
 ## 5. Ask Trading Agent（LLM Copilot）
 

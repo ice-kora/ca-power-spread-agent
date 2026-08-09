@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "generated_by": "build_evidence_demo.py",
+  "generated_at": "2026-08-09T10:24:56Z",
+  "source": "Open-Meteo Single Runs API (NCEP GFS 0.25°, gfs_global)",
+  "source_timestamp": "2026-07-09T00:00:00",
+  "hash_algorithm": "sha256",
+  "hash_normalization": "canonical-text",
+  "contains_mock": false,
+  "historical_snapshot": true,
+  "raw_source_id": "run=2026-07-08T18:00:00&node=CONTROLX_1_N001",
+  "note": "真实历史 GFS 18Z forecast snapshot（Open-Meteo Single Runs 历史档案）。Demo 使用固定历史快照保证演示可重复；时间门仍按它真实的 available_at 判定。",
+  "records": [
+    {
+      "evidence_id": "GFS-18Z-2026-07-08-CONTROLX_1_N001",
+      "event_type": "WEATHER_FORECAST",
+      "source": "Open-Meteo Single Runs API (NCEP GFS 0.25°, gfs_global)",
+      "source_type": "WEATHER",
+      "forecast_run": "18Z",
+      "initialization_time": "2026-07-08T18:00:00",
+      "published_at": "2026-07-09T00:00:00",
+      "available_at": "2026-07-09T00:00:00",
+      "retrieved_at": "2026-08-09T10:24:50",
+      "target_time": "2026-07-09T07:00:00",
+      "node": "CONTROLX_1_N001",
+      "region": "ZP26",
+      "summary": "D+1(2026-07-09) GFS 18Z 预报：t2m 均值 28.0°C，wind100 均值 3.0 m/s，ssrd 均值 384 W/m²（forecast_issue=2026-07-08T18:00:00 UTC，available=UNKNOWN(无可靠 vintage)，24h 完整度 100%）。",
+      "severity": "INFO",
+      "raw_source_id": "run=2026-07-08T18:00:00&node=CONTROLX_1_N001",
+      "directional_effect": "UNCERTAIN",
+      "confidence": 1.0,
+      "decision_date": "2026-07-08",
+      "decision_cutoff": "2026-07-08T17:00:00",
+      "is_mock": false,
+      "historical_snapshot": true,
+      "decision_eligible": false,
+      "rejection_reason": "AVAILABLE_AFTER_CUTOFF（POST_DECISION_EVIDENCE：available_at 晚于 decision_cutoff，只进复盘，绝不进入决策）"
+    }
+  ],
+  "artifact_hash": "17d6097546e302b3b6898aacf0eaa7a7fba08737975a313207c2b71218854242"
+}

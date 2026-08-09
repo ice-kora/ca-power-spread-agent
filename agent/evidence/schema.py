@@ -10,8 +10,10 @@ Agent Evidence 的统一数据结构（V0.2 白盒交易决策 Agent · 模块 1
   Evidence 只描述"决策时点之前真实可获得的外部事件信息"。
 
 As-of Decision-Time Evidence 硬约束（本次修正核心）：
-  - 任何 Evidence 必须满足 available_at <= decision_cutoff 才能参与交易建议（Pre-decision）；
-    available_at 缺失时回退 published_at（兼容旧证据），绝不使用 initialization_time。
+  - 任何 Evidence 必须满足 available_at <= decision_cutoff 才能参与交易建议（Pre-decision）。
+    available_at 由 Collector/Adapter 在进入 AsOfRecord/Evidence Schema 时**显式填好**
+    （若 published_at 本身即真正可用时刻，须显式写 available_at = published_at）；
+    缺失 = 不可参与决策（MISSING_AVAILABLE_AT），**绝不 fallback** published_at。
   - decision_eligible 由程序计算（见 Evidence.decision_eligible / time_gate.py），
     禁止由 LLM 自行判断可用性。
   - available_at > decision_cutoff（或缺失不可证）的证据 = Post-decision Evidence，
@@ -28,9 +30,10 @@ As-of Decision-Time Evidence 硬约束（本次修正核心）：
 
 P0-1（GFS 单一事实来源）时间语义：
   - available_at : 证据真正可用的时刻（= 数据层 AsOfRecord.available_at，
-                   Time Gate 判据；空串 = 无可靠 vintage → 不判定可用）。
-  - time_eligible: 优先以 available_at <= decision_cutoff 判定；available_at
-                   缺失时回退 published_at（兼容旧证据），绝不用 initialization_time。
+                   Time Gate 唯一判据；空串 = 无可靠 vintage → 不判定可用）。
+  - time_eligible: 只判 available_at <= decision_cutoff；available_at 缺失 → FALSE
+                   （MISSING_AVAILABLE_AT），绝不 fallback published_at /
+                   initialization_time。
 
 关键约束：
   - directional_effect 只能由已核实的真实数据源给出；LLM 猜测一律回退 UNCERTAIN。
@@ -89,6 +92,7 @@ EVIDENCE_KEYS: tuple = (
     "raw_source_id",
     "published_at",
     "available_at",
+    "available_at_source",
     "retrieved_at",
     "target_time",
     "decision_cutoff",
@@ -197,6 +201,7 @@ class Evidence:
     raw_source_id: str = ""
     published_at: str = ""
     available_at: str = ""
+    available_at_source: str = ""      # 诚实标注 available_at 来源：available_at / published_at（显式迁移）
     retrieved_at: str = ""
     target_time: str = ""
     decision_cutoff: str = ""
@@ -211,21 +216,20 @@ class Evidence:
     def time_eligible(self) -> bool:
         """R1/R2 纯时间门槛（程序计算，绝不由 LLM 判断）。
 
-        P0-1 修正：优先判 **available_at**（数据层 AsOfRecord 的 as-of 时点，
-        Time Gate 唯一判据）；available_at 缺失时回退 published_at（兼容旧证据），
-        绝不回退到 initialization_time。任一时间缺失 -> False（宁保守不穿越）。
+        V0.3.1.3 收口：Time Gate **只判 available_at** <= decision_cutoff。
+        available_at 由 Collector/Adapter 在进入 AsOfRecord/Evidence Schema 时
+        显式填好（若 published_at 即真正可用时刻，须显式写 available_at =
+        published_at）。available_at 缺失 → FALSE（MISSING_AVAILABLE_AT），
+        **绝不 fallback** 到 published_at / initialization_time（宁保守不穿越）。
         """
         cutoff = parse_timestamp(self.decision_cutoff)
         if cutoff is None:
             return False
         avail = parse_timestamp(self.available_at)
-        if avail is not None:
-            return avail <= cutoff
-        pub = parse_timestamp(self.published_at)
-        if pub is None:
-            return False
+        if avail is None:
+            return False            # MISSING_AVAILABLE_AT：无已证可用时刻
         try:
-            return pub <= cutoff
+            return avail <= cutoff
         except Exception:
             return False
 
@@ -279,7 +283,19 @@ class Evidence:
         self.raw_source_id = _coerce_str(self.raw_source_id)
         self.published_at = _coerce_str(self.published_at)
         self.available_at = _coerce_str(self.available_at)
+        self.available_at_source = _coerce_str(self.available_at_source)
         self.retrieved_at = _coerce_str(self.retrieved_at)
+        # V0.3.1.3 available-at-only 收口：Time Gate 只判 available_at。
+        # Schema 入口（Adapter/工厂）负责填 available_at：若 published_at 即真正
+        # 可用时刻，**显式迁移** available_at = published_at（诚实标注 source）。
+        # 仅当 available_at_source 未标注（= 未显式声明"此 available_at 缺失"）才迁移；
+        # 数据源显式标注缺失（如 GFS 12Z/18Z 无可靠 vintage）则不迁移 →
+        # available_at 保持空 = MISSING_AVAILABLE_AT，绝不隐式回退 / 猜 initialization_time。
+        if not self.available_at and not self.available_at_source and self.published_at:
+            self.available_at = self.published_at
+            self.available_at_source = "published_at（显式迁移）"
+        elif self.available_at and not self.available_at_source:
+            self.available_at_source = "available_at"
         self.target_time = _coerce_str(self.target_time)
         self.decision_cutoff = _coerce_str(self.decision_cutoff)
         self.summary = _coerce_str(self.summary)
@@ -314,6 +330,7 @@ class Evidence:
             "raw_source_id": self.raw_source_id,
             "published_at": self.published_at,
             "available_at": self.available_at,
+            "available_at_source": self.available_at_source,
             "retrieved_at": self.retrieved_at,
             "target_time": self.target_time,
             "decision_cutoff": self.decision_cutoff,

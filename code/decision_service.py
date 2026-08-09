@@ -96,6 +96,7 @@ from code.market_rules import (  # noqa: E402
 )
 from agent.evidence.fetcher import fetch_evidence  # noqa: E402
 from agent.evidence.gfs_forecast import build_gfs_evidence  # noqa: E402
+from agent.evidence.schema import evidence_from_dict  # noqa: E402
 from agent.evidence.time_gate import split_eligible  # noqa: E402
 from agent.case_library.policy import decision_time_for, is_retrievable  # noqa: E402
 
@@ -119,6 +120,9 @@ ALPHA_LABEL = "WEAK"
 #: 系统"现行规则版本"展示（Web /api/meta 等）。date-aware 判定一律用
 #: market_rule_version_for(target_date)；本常量仅表示"当前项目采用规则"。
 MARKET_RULE_VERSION = CURRENT_MARKET_RULE_VERSION
+#: 产品版本（V0.3.1.3 版本号统一：Demo 页面 / prepare_mvp / README 主入口一致展示）
+MVP_VERSION = "V0.3.1.2"
+MVP_LABEL = "V0.3.1.2 MVP — Demo Freeze"
 DECISION_CUTOFF_DESC = "10:00 PT（DAM Market Close / bid cutoff，官方 BPM）"
 OUTCOME_NOT_REVEALED = "OUTCOME_NOT_REVEALED"
 
@@ -499,10 +503,18 @@ class EvidenceBundle:
     eligible: List[Dict[str, Any]] = field(default_factory=list)      # decision_eligible=True
     post_decision: List[Dict[str, Any]] = field(default_factory=list)  # 只进复盘
     gate_note: str = ""
+    # V0.3.1.3：EVIDENCE MODE + 来源 Provenance（DEMO=HISTORICAL_SNAPSHOT / FULL=LIVE /
+    # offline=NONE），由 Adapter 填写，Web / Tool 展示统一消费。
+    mode: str = "NONE"
+    provenance: Dict[str, Any] = field(default_factory=dict)
 
 
 class EvidenceAdapter(ABC):
-    """证据适配器接口：run_decision 经它取证据（解耦天气源实现细节）。"""
+    """证据适配器接口：run_decision 经它取证据（解耦天气源实现细节）。
+
+    V0.3.1.3 收口：Adapter/Collector 负责填 available_at（Time Gate 唯一判据）；
+    Time Gate / DecisionService / Web / LLM Tool **不重新推导**。
+    """
 
     @abstractmethod
     def gather(self, node: str, decision_date: str, cutoff_utc: str) -> EvidenceBundle:
@@ -510,10 +522,11 @@ class EvidenceAdapter(ABC):
 
 
 class DefaultEvidenceAdapter(EvidenceAdapter):
-    """默认适配器：复用 agent/evidence（真实 GFS 默认 06Z 可回测 + 18Z 复盘演示）。
+    """默认适配器（FULL / SHADOW MODE = LIVE）：真实 Collector（GFS 默认 06Z 可回测 + 18Z 复盘演示）。
 
     网络失败 → 诚实降级为空（不编造证据）。MOCK 一律不进 eligible。
-    可用性判据统一为 available_at <= decision_cutoff（Time Gate 唯一判据）。
+    可用性判据统一为 available_at <= decision_cutoff（Time Gate 唯一判据；
+    available_at 缺失 → MISSING_AVAILABLE_AT，不 fallback）。
     """
 
     def gather(self, node: str, decision_date: str, cutoff_utc: str) -> EvidenceBundle:
@@ -538,15 +551,18 @@ class DefaultEvidenceAdapter(EvidenceAdapter):
 
         all_evs = real_eligible + post_real
         eligible, post = split_eligible(all_evs, cutoff_utc)
+        eligible = _normalize_evidence_rows(eligible)
+        post = _normalize_evidence_rows(post)
         if not eligible and not post:
-            return EvidenceBundle([], [], "NO ELIGIBLE EXTERNAL EVIDENCE")
+            return EvidenceBundle([], [], "NO ELIGIBLE EXTERNAL EVIDENCE",
+                                  mode="LIVE", provenance=_LIVE_PROVENANCE)
         gate_note = (
-            "Evidence Time Gate（程序计算 decision_eligible=available_at<=decision_cutoff；"
-            "available_at 缺失回退 published_at）："
+            "Evidence Time Gate（程序计算 decision_eligible=available_at<=decision_cutoff）："
             f"决策放行 {len(eligible)} 条，隔离 {len(post)} 条。"
             "隔离项只进 Post-trade Review，绝不进入 Risk Gate / Rule Engine。"
         )
-        return EvidenceBundle(list(eligible), list(post), gate_note)
+        return EvidenceBundle(list(eligible), list(post), gate_note,
+                              mode="LIVE", provenance=_LIVE_PROVENANCE)
 
 
 class StaticEvidenceAdapter(EvidenceAdapter):
@@ -568,27 +584,117 @@ class StaticEvidenceAdapter(EvidenceAdapter):
                 ev["node"] = node
             evs.append(ev)
         eligible, post = split_eligible(evs, cutoff_utc)
+        eligible = _normalize_evidence_rows(eligible)
+        post = _normalize_evidence_rows(post)
         gate_note = (
             f"Evidence Time Gate（静态注入，程序重算）：放行 {len(eligible)} 条，"
             f"隔离 {len(post)} 条。"
         )
-        return EvidenceBundle(list(eligible), list(post), gate_note)
+        return EvidenceBundle(list(eligible), list(post), gate_note,
+                              mode="NONE", provenance={})
+
+
+#: FULL / LIVE 模式证据来源 Provenance（诚实声明，非快照）
+_LIVE_PROVENANCE: Dict[str, Any] = {
+    "source": "Open-Meteo Single Runs API（NCEP GFS 0.25°· gfs_global，实时 Collector）",
+    "historical_snapshot": False,
+    "contains_mock": False,
+    "note": "FULL/SHADOW 模式：实时 GFS 采集；网络失败诚实降级为空。",
+}
+
+
+class HistoricalSnapshotEvidenceAdapter(EvidenceAdapter):
+    """DEMO MODE 证据适配器（EVIDENCE MODE = HISTORICAL SNAPSHOT）。
+
+    从 `demo_artifacts/evidence_demo.json` 加载**真实历史 GFS Evidence Snapshot**
+    （可重复、不依赖现场网络、时间戳固定、contains_mock=false）。仅当 decision_date
+    匹配快照的 decision_date 时注入证据（其它 Golden Case 展示不受干扰）；注入后仍由
+    Time Gate 按本次决策 cutoff 程序裁决（available_at 晚于 cutoff → rejected /
+    AVAILABLE_AFTER_CUTOFF）。证据不进入 Risk Gate / Rule Engine / Model / Final。
+    """
+
+    def __init__(self, snapshot_path: Optional[os.PathLike] = None):
+        self._path = Path(snapshot_path) if snapshot_path is not None else \
+            Path(REPO_ROOT) / "demo_artifacts" / "evidence_demo.json"
+        self._records: List[Dict[str, Any]] = []
+        self._meta: Dict[str, Any] = {}
+        self._load()
+
+    def _load(self) -> None:
+        if not self._path.exists():
+            return
+        try:
+            data = json.loads(self._path.read_text(encoding="utf-8"))
+            self._meta = {
+                "source": str(data.get("source") or ""),
+                "source_timestamp": str(data.get("source_timestamp") or ""),
+                "artifact_hash": str(data.get("artifact_hash") or ""),
+                "hash_normalization": str(data.get("hash_normalization") or ""),
+                "contains_mock": bool(data.get("contains_mock", False)),
+                "historical_snapshot": bool(data.get("historical_snapshot", False)),
+                "raw_source_id": str(data.get("raw_source_id") or ""),
+                "generated_at": str(data.get("generated_at") or ""),
+            }
+            self._records = list(data.get("records", []) or [])
+        except Exception:
+            self._records = []
+            self._meta = {}
+
+    def gather(self, node: str, decision_date: str, cutoff_utc: str) -> EvidenceBundle:
+        records = []
+        for rec in self._records:
+            if str(rec.get("decision_date", ""))[:10] == str(decision_date)[:10]:
+                r = dict(rec)
+                r["decision_cutoff"] = cutoff_utc  # 对齐本次决策 cutoff（程序口径）
+                if not r.get("node"):
+                    r["node"] = node
+                records.append(r)
+        if not records:
+            return EvidenceBundle(
+                [], [],
+                "EVIDENCE MODE = HISTORICAL SNAPSHOT（无匹配该决策日的快照证据 → 无证据注入）",
+                mode="HISTORICAL_SNAPSHOT", provenance=self._meta)
+        eligible, post = split_eligible(records, cutoff_utc)
+        eligible = _normalize_evidence_rows(eligible)
+        post = _normalize_evidence_rows(post)
+        gate_note = (
+            "Evidence Time Gate（HISTORICAL SNAPSHOT 真实历史 GFS 快照，程序裁决 "
+            "available_at<=decision_cutoff）："
+            f"决策放行 {len(eligible)} 条，隔离 {len(post)} 条。"
+            "隔离项只进 Post-trade Review，绝不进入 Risk Gate / Rule Engine / 最终建议。"
+        )
+        return EvidenceBundle(list(eligible), list(post), gate_note,
+                              mode="HISTORICAL_SNAPSHOT", provenance=self._meta)
 
 
 # ---------------------------------------------------------------------------
 # 证据行 / 拒绝原因（工程元数据）
 # ---------------------------------------------------------------------------
+def _normalize_evidence_rows(evs: Sequence[Any]) -> List[Dict[str, Any]]:
+    """把 Time Gate 切分结果标准化为 Evidence dict（available_at-only 收口）。
+
+    V0.3.1.3：Schema 入口负责填 available_at（published_at 显式迁移 available_at）；
+    Time Gate 只判 available_at；DecisionService / Web 只消费**标准化后的 available_at**
+    （不重新推导），保证"展示 available_at == Time Gate 判定"完全一致。
+    """
+    rows = []
+    for e in evs:
+        raw = e.to_dict() if hasattr(e, "to_dict") else dict(e)
+        rows.append(evidence_from_dict(raw).to_dict())
+    return rows
+
+
 def _ev_row(ev: Dict[str, Any]) -> Dict[str, Any]:
     """把一条证据转成展示行（工程元数据）。
 
     时间语义保持原始五字段：initialization_time / published_at / available_at /
-    retrieved_at / decision_cutoff。**available_at 展示 = Time Gate 真正用的那个**
-    （优先 available_at，缺失回退 published_at —— 与 Evidence.time_eligible 完全一致），
-    禁止把 available_at 直接合并成 published_at。decision_eligible 由调用方按
-    Time Gate 切分结果写入（不重算、不覆盖）。
+    retrieved_at / decision_cutoff。**available_at 展示 = 证据实际 available_at**
+    （Time Gate 唯一判据；V0.3.1.3 起**缺失不 fallback published_at**，缺失即无
+    已证可用时刻 → available_at_source=MISSING），decision_eligible 由调用方按
+    Time Gate 切分结果写入（不重算、不覆盖）。禁止把 available_at 合并成 published_at。
     """
     pub = ev.get("published_at", "")
-    avail = ev.get("available_at", "") or pub   # 展示 == Time Gate 判据
+    avail = ev.get("available_at", "")          # Time Gate 唯一判据；不 fallback
     return {
         "evidence_id": ev.get("evidence_id", ""),
         "event_type": ev.get("event_type", "OTHER"),
@@ -600,7 +706,8 @@ def _ev_row(ev: Dict[str, Any]) -> Dict[str, Any]:
         "initialization_time": ev.get("initialization_time", "") or ev.get("model_run_time", ""),
         "published_at": pub,
         "available_at": avail,                            # Time Gate 真正用的 available_at
-        "available_at_source": "available_at" if ev.get("available_at") else "published_at",
+        "available_at_source": str(ev.get("available_at_source")
+                                   or ("MISSING" if not avail else "available_at")),
         "retrieved_at": ev.get("retrieved_at", ""),
         "decision_cutoff": ev.get("decision_cutoff", ""),
         "decision_eligible": bool(ev.get("decision_eligible", False)),
@@ -952,6 +1059,9 @@ class DecisionService:
             "decision_cutoff_utc": cutoff_utc,
             "market_rule_version": market_rule_version_for(target_date),
             "as_of_banner": "AVAILABLE INFORMATION ONLY AS OF 10:00 PT",
+            # V0.3.1.3：Evidence Mode / Provenance（Adapter 填写；Web/Tool 展示统一消费）
+            "evidence_mode": evidence.mode,
+            "evidence_provenance": evidence.provenance,
         }
         evidence_section = self._evidence_section(evidence.eligible, evidence.post_decision, gate_note)
 
@@ -983,6 +1093,7 @@ class DecisionService:
             decision_obj=snapshot_obj,
             outcome_revealed=bool(outcome_revealed),
             rule_engine_out=rule_out,
+            evidence_provenance=evidence.provenance,   # V0.3.1.3 Evidence Provenance 审计
         )
         audit["decision_cutoff_pt"] = f"{dd} 10:00 PT"
         audit["decision_cutoff_utc"] = cutoff_utc

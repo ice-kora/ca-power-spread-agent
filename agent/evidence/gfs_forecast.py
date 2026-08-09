@@ -154,6 +154,15 @@ def _aggregate_records(
     model_run_time = str(first.get("model_run_time", "")) or str(first.get("issue_time", ""))
     forecast_run = str(first.get("forecast_run", "")) or f"{decision_date}T{cycle}"
 
+    # V0.3.1.3 available-at-only 收口：available_at 由 AsOfRecord 显式提供
+    # （Time Gate 唯一判据）。无可靠 vintage（12Z/18Z BACKTEST）→ available_at
+    # 保持空 + 显式标注缺失，防止 schema 从 published 估计值迁移误判可用。
+    available_source = ""
+    if available_at:
+        available_source = "available_at（AsOfRecord）"
+    elif published_at:
+        available_source = "MISSING（无可靠 vintage，published_at 为估计值不作可用时刻）"
+
     # 逐变量 24h 完整度 / 均值（仅用决策日 D 的目标日 T = D+1 的记录）
     fractions: List[float] = []
     means: Dict[str, Optional[float]] = {}
@@ -196,6 +205,7 @@ def _aggregate_records(
         raw_source_id=str(first.get("raw_source_id", "")) or f"run={model_run_time}&node={node}",
         published_at=published_at,
         available_at=available_at,
+        available_at_source=available_source,
         retrieved_at=retrieved_at,
         target_time=target_time,
         decision_cutoff=decision_cutoff,

@@ -1,5 +1,15 @@
 # DecisionPipeline · V0.2 决策流水线架构（含 Evidence Time Gate）
 
+> ## SUPERSEDED / HISTORICAL DESIGN RECORD
+>
+> 本文档是 **V0.2** 决策流水线设计记录，**NOT CURRENT IMPLEMENTATION**。
+> 当前实现（V0.3.1.x Demo Freeze）：
+> - 决策链单一来源：`code/decision_service.py`（`DecisionService.run_decision` → DecisionSnapshot）
+> - 当前 Time Gate 唯一判据：`available_at <= decision_cutoff`（`agent/evidence/time_gate.py`、`agent/evidence/schema.py`；available-at-only）
+> - 当前市场规则版本：`code/market_rules.py`（`market_rule_version_for(date)`，date-aware）
+>
+> V0.2 记录保留用于项目演进溯源。
+
 > 状态：V0.2 架构修正（Evidence Time Gate 已实现）｜ 代码：`code/backtest.py`、`agent/evidence/time_gate.py`、`agent/evidence/schema.py` ｜ 关联：`docs/business_contract.md` §2、`docs/market_timeline.md`
 
 ## 1. 端到端决策流水线（V0.2 架构修正）

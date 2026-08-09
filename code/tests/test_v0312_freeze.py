@@ -229,9 +229,10 @@ class V0312FreezeTests(unittest.TestCase):
 
     # ============================================================= F10
     def test_f10_web_audit_reuses_available_at(self):
-        """Web 审计复验用 available_at（缺失回退 published_at）——与 Time Gate 判据一致。"""
+        """Web 审计复验**只判 available_at**（V0.3.1.3，不 fallback published_at）——与 Time Gate 判据一致。"""
         src = (REPO_ROOT / "mvp_web.py").read_text(encoding="utf-8")
-        self.assertIn('e.get("available_at") or e.get("published_at")', src)
+        self.assertNotIn('e.get("available_at") or e.get("published_at")', src)
+        self.assertIn('e.get("available_at")', src)
 
     # ============================================================= F11
     def test_f11_trading_core_frozen_golden_unchanged(self):
@@ -265,11 +266,18 @@ class V0312FreezeTests(unittest.TestCase):
 
     # ============================================================= F14
     def test_f14_web_versions_market_rule_single_source(self):
-        """market_rule_version 单源：Web /api/meta versions.market_rule == CURRENT。"""
+        """market_rule_version 单源：Web /api/meta 不暴露固定 PRE/POST（改为启用标记）；单笔页面用 snapshot context。"""
         import mvp_web  # noqa: PLC0415
-        from code.market_rules import CURRENT_MARKET_RULE_VERSION  # noqa: PLC0415
         meta = mvp_web.app.test_client().get("/api/meta").get_json()
-        self.assertEqual(meta["versions"]["market_rule"], CURRENT_MARKET_RULE_VERSION)
+        self.assertIn("MARKET_RULE_VERSIONING_ENABLED", meta["versions"]["market_rule"])
+        # 单笔决策：S1 展示值 == DecisionSnapshot.context.market_rule_version（date-aware）
+        r = mvp_web.app.test_client().post(
+            "/api/decision", json={"decision_date": "2026-07-16",
+                                   "node": "CONTROLX_1_N001", "hour": 3,
+                                   "evidence": "offline"})
+        self.assertEqual(r.status_code, 200)
+        d = r.get_json()["decision"]
+        self.assertEqual(d["context"]["market_rule_version"], "POST_DAME_EDAM_2026")
 
     # ============================================================= F15
     def test_f15_run_tests_single_count_no_hardcode(self):
