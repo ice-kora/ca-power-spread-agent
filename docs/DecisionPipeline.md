@@ -1,23 +1,47 @@
-# DecisionPipeline · V0.1 Baseline 决策流水线架构
+# DecisionPipeline · V0.2 决策流水线架构（含 Evidence Time Gate）
 
-> 状态：已实现（第一版 White-box Risk Gate）｜ 代码：`code/backtest.py`（三态决策策略）、`code/tmp/agent_d_gate.py`（Risk Gate）｜ 关联：`docs/business_contract.md` §5–§8、`docs/stage3/risk_gate_design.md`
+> 状态：V0.2 架构修正（Evidence Time Gate 已实现）｜ 代码：`code/backtest.py`、`agent/evidence/time_gate.py`、`agent/evidence/schema.py` ｜ 关联：`docs/business_contract.md` §2、`docs/market_timeline.md`
 
-## 1. 端到端决策流水线
+## 1. 端到端决策流水线（V0.2 架构修正）
+
+> V0.2 不再把"三层模型投票"当作最终线上架构。调整为 **8 步受控流水线**，在 Agent Evidence 后新增 **Evidence Time Gate**（防 Agent 信息穿越的硬约束）：
 
 ```
-数据层 → 特征层 → 三层模型 → 模型集成(Committee) → Risk Gate → 三态决策 → PnL 结算 → 复盘
+① Predictive Model
+   ↓ expected_return / direction probability / confidence
+② Agent Evidence Collection（收集外部信息）
+   ↓
+③ Evidence Time Gate（As-of Decision-Time 硬约束）
+   ↓ 只放行 decision_eligible=True 的 Pre-decision Evidence
+④ Case / Knowledge Retrieval（历史相似案例与业务知识）
+   ↓
+⑤ Risk Gate（PASS / WARNING / REJECT + reason）
+   ↓
+⑥ White-box Rule Engine（BUY_DA / SELL_DA / NO_TRADE）
+   ↓
+⑦ Human Confirmation（交易员拍板）
+   ↓
+⑧ Post-trade Review（真实 RTPD 到来后复盘）
 ```
+
+**As-of Decision-Time Evidence 铁律**：
+- 任何 Evidence 必须满足 `published_at <= decision_cutoff`（D-1 日 10:00 PT，官方 BPM bid close）才能进入 ③ 之后。
+- `decision_eligible` 由程序计算（`agent/evidence/time_gate.py`），**禁止 LLM 自行判断可用性**。
+- `published_at > decision_cutoff` → 自动隔离为 **Post-decision Evidence**，只进 ⑧ 复盘，绝不进 ⑤⑥。
+- 历史回测必须模拟"站在历史 D 的 Decision Cutoff 能知道什么"（`as_of_timestamp`）；数据源无法提供历史发布时间 → 标记 `NOT_BACKTEST_SAFE`，不能用于严格 as-of 回测。
 
 | 阶段 | 组件 | 说明 |
 |---|---|---|
-| 数据层 | `canonical.parquet` | 无泄漏层；X 特征全部 as-of，label 区（`actual_da/actual_rtpd/actual_return/direction`）决策时点不可见 |
-| 特征层 | `docs/feature_availability_matrix.md` | 只允许 `available_at <= decision_cutoff` 且 CONFIRMED/ASSUMED_AVAILABLE 的特征；`t2m_next`/`ssrd_next`/`wind100_next` 默认禁用 |
-| 模型层 | Rule / Interpretable / CatBoost | 输出统一 schema 预测：`pred_direction / expected_return / confidence / prob_return_positive` |
-| 集成层 | Model Committee | 2/3 多数一致出方向；仅 3/3 或 Rule 参与的信号可信（双 ML 同向 = 相关误差放大，非独立确认） |
-| 风险层 | **Risk Gate** | 不预测方向，只答"是否允许入场"：PASS / REJECT / PASS_WITH_WARNING + reason_code |
-| 决策层 | 三态策略 | SELL_DA / BUY_DA / NO_TRADE |
-| 结算 | PnL | SELL=`+actual_return`，BUY=`−actual_return`，NO_TRADE=0（1 MWh/仓） |
-| 复盘 | backtest_report.md / decision snapshot / 反事实 | 指标矩阵、真实历史 snapshot、gate 反事实（`risk_gate_counterfactual.md`） |
+| 数据层 | `canonical.parquet` | 无泄漏层；X 特征全部 as-of（`available_at <= decision_cutoff`），label 区决策时点不可见 |
+| 特征层 | `feature_availability_matrix.md` | 只允许 as-of 且 CONFIRMED/ASSUMED 的特征；`t2m_next/ssrd_next/wind100_next` 禁用 |
+| 模型层 | Predictive Model（CatBoost+LightGBM，`model_v2.py`） | 只输出 `expected_return / prob_positive / prob_negative / confidence / uncertainty`，**不直接输出 BUY/SELL** |
+| 证据层 | Agent Evidence Collection（`agent/evidence/`） | 收集决策前公开的外部事件（极端天气/outage/CAISO notice）；当前无真实数据源 → 全 UNCERTAIN |
+| 时间门槛 | **Evidence Time Gate**（`agent/evidence/time_gate.py`） | 程序判断 `decision_eligible`；隔离 post-decision evidence；Leakage Guard |
+| 案例检索 | Case Library（`agent/case_library/`） | 历史相似案例（最大亏损/大额盈利/高置信错方向） |
+| 风险层 | **Risk Gate** | PASS / WARNING / REJECT + reason_code；只消费 eligible evidence |
+| 规则层 | White-box Rule Engine（`decision/rule_engine.py`） | BUY_DA / SELL_DA / NO_TRADE，规则可读可配置可测试 |
+| 人工 | Human Confirmation | `human_review_status`（PENDING/APPROVED/REJECTED/OVERRIDDEN），交易员拍板 |
+| 结算/复盘 | Post-trade Review | 真实 RTPD；亏损分类含 `UNFORESEEABLE_EVENT`（published_at>cutoff） |
 
 ## 2. 输入
 
