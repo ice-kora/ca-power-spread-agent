@@ -7,91 +7,46 @@ Flask 本地网页后端：输入 节点 + 目标日期 -> 预测次日 24h DA/R
   POST /api/predict     -> {node, target_date} -> 预测 JSON（契约见 templates/index.html）
 
 预测语义：target_date = 目标日（D+1），决策日 D = target_date - 1。
-滞后特征只使用 D-1 及更早的价格（决策时 D 日当日价格不可见，防泄漏）。
-D+1 的 2DA 负荷与天气为预报值，直接作特征；缺失时保留 NaN（LightGBM 原生处理）。
+特征构造统一走 canonical.py 的单一特征构造函数 build_row_features()（与训练同源，
+消除双实现）：滞后只使用 target_date-2 及更早（决策时点已知的最后一个整日完整交付日），
+D+1 的 2DA 负荷为预报直接作特征；target_date 实际值仅作展示/回测，不作输入。
 
-数据边界：价格历史滞后用 master.csv（价格日期范围）；D+1 的 2DA 负荷与天气从
-原始文件全范围读取（2DA 至 2026-08-07、天气至 2026-08-19），因此可预测目标日
-可延伸到 08-07（受 2DA 覆盖），更远期 2DA 缺失时该特征为 NaN。
+⚠️ 模型兼容：feature_cols.json 的 features 必须与 canonical.X_COLUMNS 一致。
+旧模型（在旧 features.py 上训练的、含 t2m_next 等泄漏特征）无法直接使用——
+Agent C 用 canonical 重建模型后本 app 自动可用；不匹配时返回明确错误。
 """
 import os
+import sys
 import json
 import joblib
 from datetime import timedelta
 import numpy as np
 import pandas as pd
 from flask import Flask, jsonify, render_template, request
-from pandas.tseries.holiday import USFederalHolidayCalendar
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA = os.path.join(ROOT, "code", "data")
-MODELS = os.path.join(ROOT, "code", "models")
+# 确保能从任意 cwd 导入同目录的 canonical.py
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from canonical import build_row_features, X_COLUMNS
+
+ROOT = os.path.dirname(os.path.abspath(__file__))
+DATA = os.path.join(ROOT, "data")
+MODELS = os.path.join(ROOT, "models")
 MASTER_PATH = os.path.join(DATA, "master.csv")
 FEAT_COLS_PATH = os.path.join(MODELS, "feature_cols.json")
-LOAD2_PATH = os.path.join(ROOT, "load_CA_ISO_TAC_2DA.csv")
-WEATHER_PATH = os.path.join(ROOT, "zone_weather_hourly.csv")
 
 MAIN_NODES = ["SNLNDRO_1_N001", "CONTROLX_1_N001"]
 ELCA_NODE = "ELCAJNGT_7_N001"
 NODES = MAIN_NODES + [ELCA_NODE]
-ZONE_OF_NODE = {"SNLNDRO_1_N001": "ZP26", "CONTROLX_1_N001": "ZP26", "ELCAJNGT_7_N001": "SP15"}
-PRICE_COLS = ["da_price", "rtpd_price", "spread", "load_actual"]
-WEATHER_COLS = ["t2m", "ssrd", "wind100"]
 HOURS = list(range(1, 25))
-
-_HOLIDAYS = set(USFederalHolidayCalendar().holidays(start="2025-01-01", end="2027-12-31").date)
 
 app = Flask(__name__)
 STATE = None
 
 
-def _pivot(df, col):
-    return df.pivot_table(index="date", columns="hour", values=col)
-
-
-def _get_pivot(pf, day, hour):
-    try:
-        v = pf.loc[day, hour]
-        return float(v) if pd.notna(v) else np.nan
-    except (KeyError, TypeError):
-        return np.nan
-
-
-def _get_col(lk, col, day, hour):
-    return _get_pivot(lk[col], day, hour)
-
-
 def load_state():
     master = pd.read_csv(MASTER_PATH, parse_dates=["date"])
-    master["date"] = master["date"].dt.date
-
-    price_lk = {}
-    for node in NODES:
-        sub = master[master["node"] == node].sort_values(["date", "hour"])
-        price_lk[node] = {c: _pivot(sub, c) for c in PRICE_COLS}
-
-    # 同 zone 关联节点（peer）的价格（ZP26: CONTROLX <-> SNLNDRO）；ELCAJNGT 无 peer
-    peer_lk = {}
-    for node in MAIN_NODES:
-        peer = [m for m in MAIN_NODES if m != node][0]
-        sub = master[master["node"] == peer].sort_values(["date", "hour"])
-        peer_lk[node] = {f"peer_{c}": _pivot(sub, c) for c in ("da_price", "rtpd_price", "spread")}
-
-    # 完整日期范围的 2DA 负荷（原始文件，含未来）
-    l2 = pd.read_csv(LOAD2_PATH)
-    l2["date"] = pd.to_datetime(l2["Date"].astype(str), format="mixed").dt.date
-    l2m = l2.melt(id_vars="date", value_vars=[f"H{i}" for i in HOURS], var_name="hc", value_name="v")
-    l2m["hour"] = l2m["hc"].str.extract(r"(\d+)").astype(int)
-    load2_lk = l2m.pivot_table(index="date", columns="hour", values="v")
-
-    # 完整日期范围的天气（按 zone；valid_pt 00:00 -> H1）
-    wt = pd.read_csv(WEATHER_PATH)
-    wt = wt.rename(columns={"t2m_c": "t2m", "ssrd_wm2": "ssrd"})
-    vt = pd.to_datetime(wt["valid_pt"])
-    wt["date"] = vt.dt.date
-    wt["hour"] = vt.dt.hour + 1
-    weather_lk = {z: {c: _pivot(wt[wt["zone"] == z], c) for c in WEATHER_COLS}
-                  for z in wt["zone"].unique()}
+    # master.csv 2026-07-21~07-26 存在整行重复，去重（与 canonical.py 同源）
+    master = master.drop_duplicates(subset=["node", "date", "hour"], keep="first")
 
     with open(FEAT_COLS_PATH, "r", encoding="utf-8") as f:
         meta = json.load(f)
@@ -99,8 +54,7 @@ def load_state():
               for name, p in meta["models"].items()}
     models_elca = {name: joblib.load(os.path.join(MODELS, os.path.basename(p)))
                    for name, p in meta.get("elca_models", {}).items()}
-    return {"master": master, "price_lk": price_lk, "peer_lk": peer_lk,
-            "load2_lk": load2_lk, "weather_lk": weather_lk, "meta": meta,
+    return {"master": master, "meta": meta,
             "models": models, "models_elca": models_elca}
 
 
@@ -111,100 +65,18 @@ def get_state():
     return STATE
 
 
-def build_features_for_day(state, node, target_date):
-    """构造单个目标日 24 行特征 DataFrame（列顺序 = feature_cols.json 的 features）。"""
-    price_lk = state["price_lk"][node]
-    peer_lk = state["peer_lk"].get(node)  # ELCAJNGT 无 peer -> None
-    wlk = state["weather_lk"][ZONE_OF_NODE[node]]
-    load2_lk = state["load2_lk"]
-    D = target_date - timedelta(days=1)
-    d1 = D - timedelta(days=1)
-
-    # 预取 D-1 的 24h 序列（日内形态 / 日均负荷）
-    def _day_series(lk, col):
-        if d1 in lk[col].index:
-            return lk[col].loc[d1]
-        return pd.Series(dtype=float)
-
-    sp_d1 = _day_series(price_lk, "spread")
-    la_d1 = _day_series(price_lk, "load_actual")
-    day_std1 = float(sp_d1.std()) if sp_d1.notna().sum() > 1 else np.nan
-    day_max1 = float(sp_d1.max()) if sp_d1.notna().any() else np.nan
-    day_range1 = float(sp_d1.max() - sp_d1.min()) if sp_d1.notna().sum() > 1 else np.nan
-    load_day_mean1 = float(la_d1.mean()) if la_d1.notna().any() else np.nan
-
-    rows = []
-    for h in HOURS:
-        getp = lambda col, day: _get_col(price_lk, col, day, h)  # noqa: E731
-        getw = lambda col, day: _get_col(wlk, col, day, h)      # noqa: E731
-        getpeer = (lambda col, day: _get_col(peer_lk, col, day, h)) if peer_lk else (lambda col, day: np.nan)  # noqa: E731
-
-        def _agg(col, days):
-            vals = [getp(col, D - timedelta(days=k)) for k in range(1, days + 1)]
-            return [v for v in vals if pd.notna(v)]
-
-        v7 = _agg("spread", 7)
-        v14 = _agg("spread", 14)
-        v30 = _agg("spread", 30)
-        mean7 = float(np.mean(v7)) if v7 else np.nan
-        std7 = float(np.std(v7)) if len(v7) > 1 else np.nan
-        mean14 = float(np.mean(v14)) if v14 else np.nan
-        std14 = float(np.std(v14)) if len(v14) > 1 else np.nan
-        mean30 = float(np.mean(v30)) if v30 else np.nan
-        std30 = float(np.std(v30)) if len(v30) > 1 else np.nan
-
-        # load_peak_flag：D+1 当天 2DA 负荷是否峰值（缺失则 NaN）
-        peak = np.nan
-        if target_date in load2_lk.index:
-            row = load2_lk.loc[target_date]
-            if row.notna().any():
-                hv = row.get(h, np.nan)
-                peak = 1.0 if pd.notna(hv) and hv == row.max() else 0.0
-
-        dt = pd.Timestamp(target_date)
-        rows.append({
-            "da_lag1": getp("da_price", D - timedelta(days=1)),
-            "rtpd_lag1": getp("rtpd_price", D - timedelta(days=1)),
-            "spread_lag1": getp("spread", D - timedelta(days=1)),
-            "da_lag2": getp("da_price", D - timedelta(days=2)),
-            "rtpd_lag2": getp("rtpd_price", D - timedelta(days=2)),
-            "spread_lag2": getp("spread", D - timedelta(days=2)),
-            "da_lag7": getp("da_price", D - timedelta(days=7)),
-            "rtpd_lag7": getp("rtpd_price", D - timedelta(days=7)),
-            "spread_lag7": getp("spread", D - timedelta(days=7)),
-            "spread_mean7": mean7,
-            "spread_std7": std7,
-            "spread_mean14": mean14,
-            "spread_std14": std14,
-            "spread_mean30": mean30,
-            "spread_std30": std30,
-            "load_actual_lag1": getp("load_actual", D - timedelta(days=1)),
-            "load_actual_day_mean_lag1": load_day_mean1,
-            "peer_spread_lag1": getpeer("peer_spread", D - timedelta(days=1)),
-            "peer_da_lag1": getpeer("peer_da_price", D - timedelta(days=1)),
-            "peer_rtpd_lag1": getpeer("peer_rtpd_price", D - timedelta(days=1)),
-            "spread_day_std_lag1": day_std1,
-            "spread_day_range_lag1": day_range1,
-            "spread_day_max_lag1": day_max1,
-            "load_2da_next": _get_pivot(load2_lk, target_date, h),
-            "t2m_next": getw("t2m", target_date),
-            "ssrd_next": getw("ssrd", target_date),
-            "wind100_next": getw("wind100", target_date),
-            "dow_next": dt.weekday(),
-            "month_next": dt.month,
-            "is_holiday_next": 1 if target_date in _HOLIDAYS else 0,
-            "solar_flag": 1 if 10 <= h <= 16 else 0,
-            "load_peak_flag": peak,
-            "hour": h,
-            "node": node,
-        })
-    return pd.DataFrame(rows)
-
-
 def predict_day(state, node, target_date):
     meta = state["meta"]
     feat_cols = meta["features"]
-    X = build_features_for_day(state, node, target_date)
+
+    # 单一特征构造函数（canonical.py，与训练同源）
+    X = build_row_features(state["master"], node, target_date)
+    missing = [c for c in feat_cols if c not in X.columns]
+    if missing:
+        raise RuntimeError(
+            "模型特征与 canonical schema 不匹配（缺失: %s）。请用 canonical 重建模型（Agent C）。"
+            % ", ".join(missing))
+
     is_elca = node == ELCA_NODE
     if is_elca:
         models = state["models_elca"]
@@ -231,14 +103,20 @@ def predict_day(state, node, target_date):
     da_pred = models.get("lgbm_da_q0.5", models.get("da_q50")).predict(X)
     rt_pred = models.get("lgbm_rtpd_q0.5", models.get("rtpd_q50")).predict(X)
 
-    price_lk = state["price_lk"][node]
-    has_actual = target_date in price_lk["da_price"].index
+    # 目标日实际值（仅展示/回测，不作特征输入）
+    master = state["master"]
+    sub = master[(master["node"] == node) & (master["date"] == pd.Timestamp(target_date))]
+    has_actual = len(sub) > 0
     da_act = rt_act = spr_act = acc = None
     if has_actual:
-        da_act = [price_lk["da_price"].loc[target_date, h] for h in HOURS]
-        rt_act = [price_lk["rtpd_price"].loc[target_date, h] for h in HOURS]
-        spr_act = [price_lk["spread"].loc[target_date, h] for h in HOURS]
-        acc = float((np.sign(np.array(spr_act)) == direction).mean())
+        sub = sub.sort_values("hour").set_index("hour")
+        da_act = [float(sub.loc[h, "da_price"]) if h in sub.index else None for h in HOURS]
+        rt_act = [float(sub.loc[h, "rtpd_price"]) if h in sub.index else None for h in HOURS]
+        spr_act = [float(d - r) if (d is not None and r is not None) else None
+                   for d, r in zip(da_act, rt_act)]
+        valid = [(s, di) for s, di in zip(spr_act, direction) if s is not None]
+        if valid:
+            acc = float(np.mean(np.sign([s for s, _ in valid]) == [di for _, di in valid]))
 
     return {
         "ok": True,
@@ -254,9 +132,9 @@ def predict_day(state, node, target_date):
         "decision": [str(x) for x in decision],
         "decision_label": [label_map[x] for x in decision],
         "has_actual": has_actual,
-        "da_actual": [float(x) for x in da_act] if da_act else None,
-        "rtpd_actual": [float(x) for x in rt_act] if rt_act else None,
-        "spread_actual": [float(x) for x in spr_act] if spr_act else None,
+        "da_actual": da_act,
+        "rtpd_actual": rt_act,
+        "spread_actual": spr_act,
         "direction_accuracy": acc,
     }
 

@@ -2,6 +2,11 @@
 """
 特征工程：为 CA-ISO 电价价差预测构建特征表。
 
+⚠️ DEPRECATED（2026-08-09）——本模块及其产物 features.parquet 仅保留作对比。
+已确认缺陷：幽灵 hour=0 行（51300 行中 2052 行）、label 污染（NaN 被强制标负样本）、
+日级特征错位（~96% NaN）、t2m_next/ssrd_next/wind100_next 疑似穿越。
+正式数据层请使用 canonical.py（产出 canonical.parquet + feature_schema.json）。
+
 输入：code/data/master.csv   （read_data.py 产物）
 输出：code/data/features.parquet（若 pyarrow 不可用则退回 .csv）
 

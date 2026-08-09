@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 ~$*
 code/tmp/*
+code/backtest_outputs/*.png
+code/backtest_outputs/*_selftest.csv
