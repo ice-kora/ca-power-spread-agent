@@ -149,32 +149,19 @@ def main() -> int:
                 else:
                     report("    DEMO vs FULL 一致性: PASS（5/5，final/gate/数值/PnL 全部一致）")
 
-                # 5) mvp_demo.py 以 DEMO 模式可导入（不联网；仅验证模块解析 + 1 个 Golden Case 决策链）
+                # 5) mvp_demo.py 以 DEMO 模式可导入（不联网；验证 CLI 渲染层 + 1 个
+                #    Golden Case 决策链——决策链唯一来源 DecisionService）
                 print("\n[5] mvp_demo.py 模块在 DEMO 模式可导入并跑通决策链（不联网）...")
                 code = (
                     "import sys; sys.path.insert(0, r'%s'); "
-                    "from mvp_demo import load_all, run_gate_and_rule, _feat_display, similar_cases; "
-                    "import pandas as pd; "
+                    "from code.decision_service import DecisionService, StaticEvidenceAdapter; "
+                    "import mvp_demo; "  # CLI 渲染层可导入（无第二套决策链）
                     "from data_mode import resolve_data_mode; "
                     "info = resolve_data_mode(); assert info.mode == 'DEMO'; "
-                    "d = load_all(); "
-                    "pr = d['pred'][(d['pred']['node']=='CONTROLX_1_N001')&"
-                    "(d['pred']['target_date']==pd.Timestamp('2026-07-17'))&(d['pred']['hour']==3)].iloc[0]; "
-                    "cr = d['canon'][(d['canon']['node']=='CONTROLX_1_N001')&"
-                    "(d['canon']['target_date']==pd.Timestamp('2026-07-17'))&(d['canon']['hour']==3)].iloc[0]; "
-                    "er=float(pr['expected_return']); "
-                    "from mvp_demo import _sign_dir; "
-                    "pred_out={'node':'CONTROLX_1_N001','target_date':'2026-07-17','hour':3,"
-                    "'expected_return':er,'prob_positive':float(pr['prob_positive']),"
-                    "'prob_negative':float(pr['prob_negative']),'direction_probability':None,"
-                    "'model_signal_strength':float(pr['confidence']),'uncertainty':float(pr['uncertainty']),"
-                    "'direction':_sign_dir(er)}; "
-                    "from code.risk_gate.evidence_adapter import evidence_direction_context; "
-                    "rows=_feat_display(cr.to_dict(),'2026-07-16','2026-07-17'); "
-                    "ev=evidence_direction_context([], ''); "
-                    "v,d=run_gate_and_rule(pred_out,{},ev,[],'',features_used=rows); "
-                    "print('DEMO_MODE:', info.mode, '| final:', d.decision)"
-                ) % (REPO_ROOT,)
+                    "svc = DecisionService(data_dir=r'%s', evidence_adapter=StaticEvidenceAdapter([])); "
+                    "d = svc.run_decision('2026-07-16', 'CONTROLX_1_N001', 3); "
+                    "print('DEMO_MODE:', info.mode, '| final:', d['final_recommendation'])"
+                ) % (REPO_ROOT, REPO_ROOT / "demo_artifacts")
                 r2 = subprocess.run([sys.executable, "-X", "utf8", "-c", code],
                                     cwd=str(REPO_ROOT), capture_output=True, text=True,
                                     timeout=180, env=SUB_ENV)

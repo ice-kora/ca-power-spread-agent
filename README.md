@@ -114,16 +114,22 @@ python mvp_web.py --offline
 
 ## 8. 测试与审计
 
-12 项 V0.3.1 验收测试（Web/CLI 一致、统一 GFS、available_at 展示==Time Gate、LLM 不可覆盖工具数字与最终建议、未 Reveal 拒绝 post_trade、MOCK 隔离、Case 防穿越、Agent Trace、无 Key 降级、mock LLM 三问、页面路由）：
+全仓库唯一测试入口（一次 discovery，无重复计数，TOTAL/PASSED/FAILED/SKIPPED 动态推导）：
 
 ```bash
-python code/tests/test_mvp_v031.py      # 严格输出 TOTAL / PASSED / FAILED / SKIPPED
-python prepare_mvp.py                   # 启动前自检
+python run_tests.py          # 全仓库 test_*.py 一次运行，唯一计数（当前 300 项全过）
+python prepare_mvp.py        # 启动前自检
 ```
 
-回归测试：`python -m unittest code.tests.test_decision_service code.tests.test_llm_copilot`
+分块测试（按需）：
+- V0.3.1.2 封板补丁 15 项验收：`python code/tests/test_v0312_freeze.py`
+- V0.3.1.1 Demo Hardening 15 项验收：`python code/tests/test_v0311_hardening.py`
+- V0.3.1 Web + LLM MVP 12 项验收：`python code/tests/test_mvp_v031.py`
+- 回归：`python -m unittest code.tests.test_decision_service code.tests.test_llm_copilot`
+
+覆盖要点：跨平台 canonical 哈希（CRLF/LF）、单一 DecisionService（CLI/Web/Tool 同一 DecisionSnapshot、无第二套 RiskGate/RuleEngine）、date-aware 市场规则版本（2026-05-01 边界）、available_at-only 证据判定、交易核心冻结（Golden 5 案例不变）、MOCK 隔离、Case 防穿越、LLM 不可覆盖工具数字。
 
 ## 9. 旧版指引
 
-- CLI Demo（V0.2 文本版决策报告）：`python mvp_demo.py --help`；非技术用户指南见 `mvp_readme.md`。
+- CLI Demo（决策链单一来源 `DecisionService.run_decision` → DecisionSnapshot，与 Web/LLM Tools 同一份；本脚本仅渲染 + Lock/Reveal）：`python mvp_demo.py --help`；非技术用户指南见 `mvp_readme.md`。
 - V0.2 技术文档：`docs/Architecture.md`、`docs/DecisionPipeline.md`、`docs/business_contract.md`、`docs/feature_availability_matrix.md` 等；`工程报告.md`、`数据审计与业务口径.md`。

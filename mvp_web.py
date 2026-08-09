@@ -466,8 +466,9 @@ def _compute_runtime_audit(dec: Dict[str, Any]) -> Dict[str, Any]:
         "FEATURE_AS_OF", "Feature As-of Eligibility", len(feats), f_fail,
         note="；".join(f_notes[:4]) or "全部特征 decision_eligible=True", warn_count=f_warn))
 
-    # 2) Evidence Time Gate：eligible 必须 published_at <= cutoff；rejected 必须非 MOCK 且
-    #    晚于 cutoff（或缺失发布时刻）。逐条程序复验 Time Gate 判定。
+    # 2) Evidence Time Gate：eligible 必须 available_at <= cutoff（available_at 缺失时
+    #    回退 published_at 复验，与 Time Gate 判据一致）；rejected 必须非 MOCK 且
+    #    晚于 cutoff（或缺失不可证）。逐条程序复验 Time Gate 判定。
     ev = dec.get("evidence") or {}
     elig = list(ev.get("eligible") or [])
     rej = list(ev.get("rejected") or ev.get("post_decision") or [])
@@ -475,10 +476,10 @@ def _compute_runtime_audit(dec: Dict[str, Any]) -> Dict[str, Any]:
     cut = _ts(cutoff_utc)
     for e in elig:
         if cut is not None:
-            pub = _ts(e.get("published_at"))
-            if pub is not None and pub > cut:
+            avail = _ts(e.get("available_at") or e.get("published_at"))
+            if avail is not None and avail > cut:
                 g_fail += 1
-                g_notes.append(f"eligible={e.get('evidence_id')} published_at 晚于 cutoff")
+                g_notes.append(f"eligible={e.get('evidence_id')} available_at 晚于 cutoff")
     for r in rej:
         if bool(r.get("is_mock")):
             continue  # MOCK 隔离属预期

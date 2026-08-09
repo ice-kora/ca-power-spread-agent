@@ -1,0 +1,25 @@
+# 跨平台 canonical：文本文件统一 LF 入库/出库；二进制保持原样。
+# 配合 code/artifact_hash.canonical_sha256（文本 CRLF→LF 归一化后再哈希），
+# 保证 demo_artifacts/manifest 哈希在 Windows（CRLF）与 Linux（LF）上一致。
+
+*               text=auto
+*.py            text eol=lf
+*.json          text eol=lf
+*.csv           text eol=lf
+*.md            text eol=lf
+*.txt           text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+
+# 二进制文件（不参与换行转换）
+*.parquet       -text
+*.xlsx          -text
+*.xls           -text
+*.png           -text
+*.jpg           -text
+*.jpeg          -text
+*.gif           -text
+*.pdf           -text
+*.zip           -text
+*.pkl           -text
+*.joblib        -text

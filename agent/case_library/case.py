@@ -47,6 +47,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from code.market_rules import (  # noqa: E402
     CURRENT_MARKET_RULE_VERSION,
+    market_rule_version_for,
     normalize_market_rule_version,
 )
 
@@ -101,7 +102,21 @@ class Case:
 
     @staticmethod
     def from_dict(raw: Dict[str, Any]) -> "Case":
-        """从 dict 重建 Case（字段缺失给默认值）。"""
+        """从 dict 重建 Case（字段缺失给默认值）。
+
+        market_rule_version（V0.3.1.2 date-aware 单源）：raw 无该字段时按
+        decision_date 用 market_rule_version_for 推断（边界 2026-05-01 →
+        POST_DAME_EDAM_2026），保证 2026-05-01+ 案例标 POST；raw 有显式标注则保留。
+        仅影响 provenance 标签，不改变任何交易/结算字段。
+        """
+        raw_mrv = str(raw.get("market_rule_version", "") or "").strip()
+        dd = str(raw.get("decision_date", ""))[:10]
+        if raw_mrv:
+            mrv = normalize_market_rule_version(raw_mrv)
+        elif dd:
+            mrv = market_rule_version_for(dd)
+        else:
+            mrv = CURRENT_MARKET_RULE_VERSION
         return Case(
             case_id=str(raw.get("case_id", "")),
             decision_date=str(raw.get("decision_date", "")),
@@ -125,9 +140,7 @@ class Case:
             case_created_at=str(raw.get("case_created_at", "")),
             case_available_at=str(raw.get("case_available_at", "")),
             review_completed_at=str(raw.get("review_completed_at", "")),
-            market_rule_version=str(
-                raw.get("market_rule_version", CURRENT_MARKET_RULE_VERSION)
-            ),
+            market_rule_version=mrv,
         )
 
     # ------------------------------------------------------------------

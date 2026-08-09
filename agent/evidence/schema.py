@@ -10,11 +10,12 @@ Agent Evidence 的统一数据结构（V0.2 白盒交易决策 Agent · 模块 1
   Evidence 只描述"决策时点之前真实可获得的外部事件信息"。
 
 As-of Decision-Time Evidence 硬约束（本次修正核心）：
-  - 任何 Evidence 必须满足 published_at <= decision_cutoff 才能参与交易建议（Pre-decision）。
+  - 任何 Evidence 必须满足 available_at <= decision_cutoff 才能参与交易建议（Pre-decision）；
+    available_at 缺失时回退 published_at（兼容旧证据），绝不使用 initialization_time。
   - decision_eligible 由程序计算（见 Evidence.decision_eligible / time_gate.py），
     禁止由 LLM 自行判断可用性。
-  - published_at > decision_cutoff 的证据 = Post-decision Evidence，只能进 Post-trade Review，
-    绝不能进入 Risk Gate / Rule Engine / 交易建议。
+  - available_at > decision_cutoff（或缺失不可证）的证据 = Post-decision Evidence，
+    只能进 Post-trade Review，绝不能进入 Risk Gate / Rule Engine / 交易建议。
   - 历史回测中数据源若无法提供历史发布时间 -> 标记 NOT_BACKTEST_SAFE，不能用于严格 as-of 回测。
 
 结构（在团队统一口径基础上增加时间字段）：
@@ -232,8 +233,8 @@ class Evidence:
     def decision_eligible(self) -> bool:
         """R7 硬隔离：时间合格 且 非 MOCK 才可参与决策。MOCK 证据恒为 FALSE。
 
-        published_at > decision_cutoff → Post-decision，只能进 Post-trade Review。
-        程序计算，禁止 LLM 判断。
+        available_at > decision_cutoff（或缺失不可证）→ Post-decision，只能进
+        Post-trade Review。程序计算，禁止 LLM 判断。
         """
         return bool(self.time_eligible and not self.is_mock)
 

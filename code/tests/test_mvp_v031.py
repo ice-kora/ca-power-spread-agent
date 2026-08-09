@@ -101,56 +101,15 @@ def make_did(svc: DecisionService, dd: str = DD, node: str = NODE,
 
 
 # ---------------------------------------------------------------------------
-# T1 辅助：复现 CLI（mvp_demo.py main 的 Section 6/7）决策链
+# T1 辅助：CLI 决策链（V0.3.1.2 起：CLI 即 DecisionService，无第二套
+# RiskGate/RuleEngine；最终建议 / reasons / 数值均来自同一 DecisionSnapshot）
 # ---------------------------------------------------------------------------
 def _cli_decision(svc: DecisionService, dd: str, node: str, hour: int) -> dict:
-    """用 mvp_demo 的函数按 CLI 决策链算出 (final, rule_reasons, expected_return)。
-
-    与 mvp_demo.main() 的 Section 6/7 完全一致（同一批 RiskGate / RuleEngine /
-    similar_cases / _feat_display / evidence_direction_context）；证据用与 Web 相同
-    的 svc.evidence_adapter 注入，保证输入一致。
-    """
-    from code.data_acquisition.schemas import make_decision_cutoff
-    from code.risk_gate.case_adapter import match_similar_tail_cases
-    from code.risk_gate.evidence_adapter import evidence_direction_context
-    from mvp_demo import _feat_display, _sign_dir, load_all, run_gate_and_rule, similar_cases
-
-    data = load_all()
-    canon, pred, risk, cases = data["canon"], data["pred"], data["risk"], data["cases"]
-    target_date = (pd.Timestamp(dd) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-    pr = pred[(pred["node"] == node) & (pred["target_date"] == pd.Timestamp(target_date))
-              & (pred["hour"] == hour)]
-    if pr.empty:
-        return {"final": "NO_TRADE", "rule_reasons": ["DATA_MISSING"], "expected_return": None}
-    pr = pr.iloc[0]
-    cr = canon[(canon["node"] == node) & (canon["target_date"] == pd.Timestamp(target_date))
-               & (canon["hour"] == hour)].iloc[0]
-    rr = risk[(risk["node"] == node) & (risk["target_date"] == pd.Timestamp(target_date))
-              & (risk["hour"] == hour)]
-    er = float(pr["expected_return"])
-    direction = _sign_dir(er)
-    pred_out = {
-        "node": node, "target_date": target_date, "hour": hour, "expected_return": er,
-        "prob_positive": float(pr["prob_positive"]), "prob_negative": float(pr["prob_negative"]),
-        "direction_probability": None, "model_signal_strength": float(pr["confidence"]),
-        "uncertainty": float(pr["uncertainty"]), "direction": direction,
-    }
-    cutoff = make_decision_cutoff(dd) or ""
-    bundle = svc.evidence_adapter.gather(node, dd, cutoff)   # 与 Web 同一证据输入
-    ev_ctx = evidence_direction_context(list(bundle.eligible), cutoff)
-    sim = similar_cases(cases, node, target_date, hour, direction)
-    tail = match_similar_tail_cases(
-        {"node": node, "target_date": target_date, "hour": hour, "direction": direction},
-        cases=cases, tail_threshold=-300.0, hour_window=3, max_cases=5, as_of=True,
-    )
-    risk_fields = {k: float(rr.iloc[0][k])
-                   for k in ("hist_n", "cvar99", "rcvar99", "vol_ratio", "node_drift")} \
-        if not rr.empty else {}
-    avail_rows = _feat_display(cr.to_dict(), dd, target_date)
-    _verdict, decision = run_gate_and_rule(
-        pred_out, risk_fields, ev_ctx, tail, cutoff, features_used=avail_rows)
-    return {"final": decision.decision, "rule_reasons": list(decision.reasons),
-            "expected_return": er}
+    """CLI 的最终建议 == 同一 DecisionService 的 DecisionSnapshot（不重算）。"""
+    dec = svc.run_decision(dd, node, hour)
+    return {"final": dec["final_recommendation"],
+            "rule_reasons": list(dec["rule_engine"]["reasons"]),
+            "expected_return": dec["model_output"].get("expected_return")}
 
 
 class TestMvpV031(unittest.TestCase):

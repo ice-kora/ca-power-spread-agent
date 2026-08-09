@@ -29,6 +29,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from code.artifact_hash import (  # noqa: E402
+    HASH_ALGORITHM,
+    HASH_NORMALIZATION,
+    canonical_sha256,
+)
 from code.decision_service import DecisionService, StaticEvidenceAdapter  # noqa: E402
 from data_mode import (  # noqa: E402
     DEMO_DIR_NAME,
@@ -115,12 +120,14 @@ class DemoArtifactsTests(unittest.TestCase):
         self.assertIn("source_files", m)
         self.assertIn("row_counts", m)
         self.assertIn("hashes", m)
-        # 每个输出文件哈希必须与磁盘一致（可复现性）
+        # V0.3.1.2：manifest 声明跨平台 canonical 哈希语义
+        self.assertEqual(m.get("hash_algorithm"), HASH_ALGORITHM)
+        self.assertEqual(m.get("hash_normalization"), HASH_NORMALIZATION)
+        # 每个输出文件哈希必须与磁盘一致（可复现性；canonical：CRLF/LF 均可）
         for fname, h in m["hashes"].items():
             self.assertTrue((DEMO_DIR / fname).exists(), f"输出文件 {fname} 应存在")
-            import hashlib
-            digest = hashlib.sha256((DEMO_DIR / fname).read_bytes()).hexdigest()
-            self.assertEqual(digest, h, f"{fname} 哈希应匹配 manifest")
+            digest = canonical_sha256(DEMO_DIR / fname)
+            self.assertEqual(digest, h, f"{fname} 哈希应匹配 manifest（canonical）")
 
     # ------------------------------------------------------------------ D4
     def test_d4_full_vs_demo_consistency(self):

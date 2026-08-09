@@ -38,7 +38,6 @@ build_demo_artifacts.py —— 从完整本地数据抽取 Golden Case 最小真
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import subprocess
 import sys
@@ -55,6 +54,11 @@ import pandas as pd  # noqa: E402
 from data_mode import (  # noqa: E402
     MODE_DEMO,
     resolve_data_mode,
+)
+from code.artifact_hash import (  # noqa: E402
+    HASH_ALGORITHM,
+    HASH_NORMALIZATION,
+    canonical_sha256,
 )
 
 #: 输出目录
@@ -80,11 +84,12 @@ LATEST_DECISION_DATE = "2026-07-20"
 # 小工具
 # ---------------------------------------------------------------------------
 def _sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    """跨平台 canonical 哈希：文本文件 CRLF→LF 归一化后 SHA-256；二进制原样。
+
+    配合 .gitattributes `text eol=lf`：Windows（CRLF）/ Linux（LF）上同一文件
+    的 canonical 哈希一致，clean clone 校验不因换行符 FAIL（V0.3.1.2 P0）。
+    """
+    return canonical_sha256(path)
 
 
 def _iso_utc() -> str:
@@ -247,6 +252,8 @@ def _write_metadata(info: Dict[str, Path], row_counts: Dict[str, int],
     meta = {
         "schema_version": "1.0",
         "data_mode": MODE_DEMO,
+        "hash_algorithm": HASH_ALGORITHM,
+        "hash_normalization": HASH_NORMALIZATION,
         "description": (
             "真实历史数据的最小切片，只覆盖 5 个 Golden Cases 决策所需行 + 特征前置窗口。"
             "不造数据、不改 PnL/prediction/decision。"
@@ -277,14 +284,16 @@ def _write_metadata(info: Dict[str, Path], row_counts: Dict[str, int],
             "证据（GFS）不打包：FULL 与 DEMO 走同一实时证据路径，网络可用性不影响决策一致性。",
         ],
     }
-    (OUT_DIR / "metadata.json").write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    (OUT_DIR / "metadata.json").write_bytes(
+        json.dumps(meta, ensure_ascii=False, indent=2).encode("utf-8"))
 
 
 def _write_manifest(row_counts: Dict[str, int], out_hashes: Dict[str, str],
                     src_hashes: Dict[str, str], cases: List[Dict[str, Any]]) -> None:
     manifest = {
         "artifact_version": "1.0",
+        "hash_algorithm": HASH_ALGORITHM,
+        "hash_normalization": HASH_NORMALIZATION,
         "generated_at": _iso_utc(),
         "source_commit": _git_head(),
         "data_mode": MODE_DEMO,
@@ -308,8 +317,8 @@ def _write_manifest(row_counts: Dict[str, int], out_hashes: Dict[str, str],
         },
         "note": "在完整数据机上运行 python build_demo_artifacts.py 生成；clean clone 可直接以 DEMO 模式启动。",
     }
-    (OUT_DIR / "manifest.json").write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    (OUT_DIR / "manifest.json").write_bytes(
+        json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -349,10 +358,9 @@ def main() -> int:
     n_risk = build_risk_slice(risk, OUT_DIR / "risk_features_demo.parquet")
     print(f"    · risk_features_demo.parquet   {n_risk} 行")
     cases = build_cases_slice()
-    (OUT_DIR / "cases_demo.json").write_text(
+    (OUT_DIR / "cases_demo.json").write_bytes(
         json.dumps({"meta": {"generator": "build_demo_artifacts.py", "n": len(cases)},
-                    "cases": cases}, ensure_ascii=False, indent=1),
-        encoding="utf-8")
+                    "cases": cases}, ensure_ascii=False, indent=1).encode("utf-8"))
     print(f"    · cases_demo.json              {len(cases)} 条案例（as-of 超集）")
 
     row_counts = {

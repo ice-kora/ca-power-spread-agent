@@ -8,8 +8,11 @@ Evidence Time Gate（V0.2 修正核心）：防止 Agent 信息穿越 + MOCK 硬
   在 Agent Evidence 与 Risk Gate / Rule Engine 之间，程序化判断每条证据
   是否满足 As-of Decision-Time 约束：
 
-      IF 非 MOCK 且 published_at <= decision_cutoff:  decision_eligible = TRUE（Pre-decision）
-      ELSE:                                          decision_eligible = FALSE（Post-decision / DEMO MOCK）
+      IF 非 MOCK 且 available_at <= decision_cutoff:  decision_eligible = TRUE（Pre-decision）
+      ELSE:                                            decision_eligible = FALSE（Post-decision / DEMO MOCK）
+
+  available_at 是 Time Gate **唯一**判据（AsOfRecord 的 as-of 时点）；available_at
+  缺失时才回退 published_at（兼容旧证据），绝不使用 initialization_time。
 
   decision_eligible 一律由本模块程序计算，禁止由 LLM 自行判断。
 
@@ -71,8 +74,8 @@ def is_available_before_cutoff(available_at: Optional[str],
 
     business_contract §4 铁律：任何特征若 `available_at > decision_cutoff`
     （D-1 日 10:00 PT，DAM Market Close / bid cutoff）→ **禁止进入训练/推理**。
-    Evidence 的 `published_at` 即该条证据的 `available_at`，本函数与
-    `Evidence.decision_eligible` 同语义（纯程序计算，禁止 LLM 判断）。
+    Evidence 的 available_at（缺失时回退 published_at）即该条证据的可用时刻，
+    本函数与 `Evidence.decision_eligible` 同语义（纯程序计算，禁止 LLM 判断）。
 
     Returns:
         True  仅当 available_at 非空、可解析且 <= decision_cutoff

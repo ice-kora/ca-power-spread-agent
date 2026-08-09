@@ -47,6 +47,28 @@ MARKET_RULE_VERSIONS: tuple = (
 #: 当前项目采用的市场规则版本
 CURRENT_MARKET_RULE_VERSION: str = MARKET_RULE_VERSION_PRE_DAME_EDAM_2026
 
+#: DAME/EDAM 市场规则生效边界（按项目确认：2026-05-01 起的交易日标记为 POST）。
+#: 若官方实际生效日不同，仅需改此一处。
+MARKET_RULE_CUTOFF_DATE = __import__("pandas").Timestamp("2026-05-01")
+
+
+def market_rule_version_for(trade_date) -> str:
+    """按交付日（trade_date）返回该笔交易所属的市场规则版本（单一来源）。
+
+    trade_date >= 2026-05-01 -> POST_DAME_EDAM_2026，否则 PRE。
+    这是"版本标签"而非完整 EDAM 适配；边界日期由 MARKET_RULE_CUTOFF_DATE 统一控制。
+    """
+    from datetime import date as _date
+    if isinstance(trade_date, (str, _date)):
+        try:
+            ts = __import__("pandas").Timestamp(trade_date)
+            return (MARKET_RULE_VERSION_POST_DAME_EDAM_2026
+                    if ts >= MARKET_RULE_CUTOFF_DATE
+                    else MARKET_RULE_VERSION_PRE_DAME_EDAM_2026)
+        except Exception:
+            pass
+    return CURRENT_MARKET_RULE_VERSION
+
 
 def normalize_market_rule_version(value: Optional[str]) -> str:
     """把任意输入规约为合法市场规则版本；非法/缺失回退当前版本。

@@ -90,6 +90,10 @@ from code.risk_gate.case_adapter import match_similar_tail_cases  # noqa: E402
 from code.risk_gate.evidence_adapter import evidence_direction_context  # noqa: E402
 from code.decision.rule_engine import RuleEngine  # noqa: E402
 from code.decision.audit import run_runtime_audit  # noqa: E402
+from code.market_rules import (  # noqa: E402
+    CURRENT_MARKET_RULE_VERSION,
+    market_rule_version_for,
+)
 from agent.evidence.fetcher import fetch_evidence  # noqa: E402
 from agent.evidence.gfs_forecast import build_gfs_evidence  # noqa: E402
 from agent.evidence.time_gate import split_eligible  # noqa: E402
@@ -101,43 +105,20 @@ except Exception:  # pragma: no cover
     _availability_map = None
 
 # ---------------------------------------------------------------------------
-# 版本常量（单一事实来源：尽量复用 mvp_demo.py；失败则本地兜底副本）
+# 版本常量（单一事实来源：本模块定义；Web / CLI / LLM Tools 均从此消费，
+# 不重复定义。V0.3.1.2 起不再从 mvp_demo.py import —— CLI 重构为渲染层后，
+# decision_service 不得反向依赖 CLI，避免循环 import 与双份常量漂移。）
 # ---------------------------------------------------------------------------
-try:  # pragma: no cover - 取决于 mvp_demo 是否可导入
-    from mvp_demo import (  # noqa: F401
-        ALPHA_LABEL as _ALPHA_LABEL,
-        CASE_LIBRARY_VERSION as _CL_VERSION,
-        EVIDENCE_TIME_GATE_VERSION as _ETG_VERSION,
-        MARKET_RULE_VERSION as _MRV,
-        MODEL_VERSION as _MODEL_VERSION,
-        RISK_GATE_VERSION as _RG_VERSION,
-        RULE_ENGINE_VERSION as _RE_VERSION,
-        SCHEMA_VERSION as _SCHEMA_VERSION,
-        classify_post_trade as _classify_post_trade,
-        similar_cases as _similar_cases,
-        top_feature_contributions as _top_feature_contributions,
-    )
-except Exception:  # pragma: no cover
-    _top_feature_contributions = None
-    _similar_cases = None
-    _classify_post_trade = None
-    _MRV = "CAISO-DAM/BPM-demo-0.2（DAM bid cutoff = 10:00 PT）"
-    _MODEL_VERSION = "V0.2 (model_v2.py / predictions_v2.csv)"
-    _RE_VERSION = "0.2 (code/decision/rule_engine.py)"
-    _RG_VERSION = "0.2 (code/risk_gate)"
-    _ETG_VERSION = "0.2 (agent/evidence/time_gate.py)"
-    _CL_VERSION = "0.2 (agent/case_library, 337 条：auto 319 + manual 18)"
-    _SCHEMA_VERSION = "asof_v1 (code/data_acquisition/schemas.py)"
-    _ALPHA_LABEL = "WEAK"
-
-MARKET_RULE_VERSION = _MRV
-MODEL_VERSION = _MODEL_VERSION
-RULE_ENGINE_VERSION = _RE_VERSION
-RISK_GATE_VERSION = _RG_VERSION
-EVIDENCE_TIME_GATE_VERSION = _ETG_VERSION
-CASE_LIBRARY_VERSION = _CL_VERSION
-SCHEMA_VERSION = _SCHEMA_VERSION
-ALPHA_LABEL = _ALPHA_LABEL
+MODEL_VERSION = "V0.2 (model_v2.py / predictions_v2.csv)"
+RULE_ENGINE_VERSION = "0.2 (code/decision/rule_engine.py)"
+RISK_GATE_VERSION = "0.2 (code/risk_gate)"
+EVIDENCE_TIME_GATE_VERSION = "0.2 (agent/evidence/time_gate.py)"
+CASE_LIBRARY_VERSION = "0.2 (agent/case_library, 337 条：auto 319 + manual 18)"
+SCHEMA_VERSION = "asof_v1 (code/data_acquisition/schemas.py)"
+ALPHA_LABEL = "WEAK"
+#: 系统"现行规则版本"展示（Web /api/meta 等）。date-aware 判定一律用
+#: market_rule_version_for(target_date)；本常量仅表示"当前项目采用规则"。
+MARKET_RULE_VERSION = CURRENT_MARKET_RULE_VERSION
 DECISION_CUTOFF_DESC = "10:00 PT（DAM Market Close / bid cutoff，官方 BPM）"
 OUTCOME_NOT_REVEALED = "OUTCOME_NOT_REVEALED"
 
@@ -493,19 +474,19 @@ def _fallback_classify_post_trade(*, decision: str, direction: str,
 
 def _top_feature_contributions_impl(canon: pd.DataFrame, node: str, decision_date: str,
                                     canon_row: Dict[str, Any], topn: int = 5) -> List[Dict[str, Any]]:
-    fn = _top_feature_contributions or _fallback_top_feature_contributions
-    return fn(canon, node, decision_date, canon_row, topn)
+    # V0.3.1.2：单一实现（不再回退 mvp_demo；mvp_demo 是渲染层）
+    return _fallback_top_feature_contributions(canon, node, decision_date, canon_row, topn)
 
 
 def _similar_cases_impl(cases: List[Dict[str, Any]], node: str, target_date: str, hour: int,
                         direction: str, topn: int = 3) -> List[Dict[str, Any]]:
-    fn = _similar_cases or _fallback_similar_cases
-    return fn(cases, node, target_date, hour, direction, topn)
+    # V0.3.1.2：单一实现（不再回退 mvp_demo；mvp_demo 是渲染层）
+    return _fallback_similar_cases(cases, node, target_date, hour, direction, topn)
 
 
 def _classify_post_trade_impl(**kwargs) -> Dict[str, Any]:
-    fn = _classify_post_trade or _fallback_classify_post_trade
-    return fn(**kwargs)
+    # V0.3.1.2：单一实现（不再回退 mvp_demo；mvp_demo 是渲染层）
+    return _fallback_classify_post_trade(**kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -529,9 +510,10 @@ class EvidenceAdapter(ABC):
 
 
 class DefaultEvidenceAdapter(EvidenceAdapter):
-    """默认适配器：复用 agent/evidence（真实 GFS 12Z 可用 + 18Z 复盘演示）。
+    """默认适配器：复用 agent/evidence（真实 GFS 默认 06Z 可回测 + 18Z 复盘演示）。
 
     网络失败 → 诚实降级为空（不编造证据）。MOCK 一律不进 eligible。
+    可用性判据统一为 available_at <= decision_cutoff（Time Gate 唯一判据）。
     """
 
     def gather(self, node: str, decision_date: str, cutoff_utc: str) -> EvidenceBundle:
@@ -559,7 +541,8 @@ class DefaultEvidenceAdapter(EvidenceAdapter):
         if not eligible and not post:
             return EvidenceBundle([], [], "NO ELIGIBLE EXTERNAL EVIDENCE")
         gate_note = (
-            "Evidence Time Gate（程序计算 decision_eligible=published_at<=decision_cutoff）："
+            "Evidence Time Gate（程序计算 decision_eligible=available_at<=decision_cutoff；"
+            "available_at 缺失回退 published_at）："
             f"决策放行 {len(eligible)} 条，隔离 {len(post)} 条。"
             "隔离项只进 Post-trade Review，绝不进入 Risk Gate / Rule Engine。"
         )
@@ -967,7 +950,7 @@ class DecisionService:
             "zone": NODE_REGION.get(node, "?"),
             "decision_cutoff_pt": f"{dd} 10:00 PT",
             "decision_cutoff_utc": cutoff_utc,
-            "market_rule_version": MARKET_RULE_VERSION,
+            "market_rule_version": market_rule_version_for(target_date),
             "as_of_banner": "AVAILABLE INFORMATION ONLY AS OF 10:00 PT",
         }
         evidence_section = self._evidence_section(evidence.eligible, evidence.post_decision, gate_note)
@@ -1017,7 +1000,7 @@ class DecisionService:
                 if self.data_mode == MODE_DEMO
                 else "FULL：完整数据"
             ),
-            "market_rule_version": MARKET_RULE_VERSION,
+            "market_rule_version": market_rule_version_for(target_date),
             "model_version": MODEL_VERSION,
             "rule_engine_version": RULE_ENGINE_VERSION,
             "risk_gate_version": RISK_GATE_VERSION,

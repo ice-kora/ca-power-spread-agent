@@ -110,52 +110,15 @@ def make_svc(evidence=None, data_dir=None) -> DecisionService:
 
 
 # ---------------------------------------------------------------------------
-# CLI 决策链（与 mvp_demo.main 的 Section 6/7 一致；供 H13 对比）
+# CLI 决策链（V0.3.1.2 起：CLI 即 DecisionService，无第二套 RiskGate/RuleEngine；
+# 供 H13 验证 Web / CLI / Tool 消费同一个 DecisionSnapshot）
 # ---------------------------------------------------------------------------
 def _cli_decision(svc: DecisionService, dd: str, node: str, hour: int) -> dict:
-    from code.data_acquisition.schemas import make_decision_cutoff
-    from code.risk_gate.case_adapter import match_similar_tail_cases
-    from code.risk_gate.evidence_adapter import evidence_direction_context
-    from mvp_demo import _feat_display, _sign_dir, load_all, run_gate_and_rule, similar_cases
-
-    import pandas as pd  # noqa: PLC0415
-
-    data = load_all()
-    canon, pred, risk, cases = data["canon"], data["pred"], data["risk"], data["cases"]
-    target_date = (pd.Timestamp(dd) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-    pr = pred[(pred["node"] == node) & (pred["target_date"] == pd.Timestamp(target_date))
-              & (pred["hour"] == hour)]
-    if pr.empty:
-        return {"final": "NO_TRADE", "rule_reasons": ["DATA_MISSING"], "expected_return": None}
-    pr = pr.iloc[0]
-    cr = canon[(canon["node"] == node) & (canon["target_date"] == pd.Timestamp(target_date))
-               & (canon["hour"] == hour)].iloc[0]
-    rr = risk[(risk["node"] == node) & (risk["target_date"] == pd.Timestamp(target_date))
-              & (risk["hour"] == hour)]
-    er = float(pr["expected_return"])
-    direction = _sign_dir(er)
-    pred_out = {
-        "node": node, "target_date": target_date, "hour": hour, "expected_return": er,
-        "prob_positive": float(pr["prob_positive"]), "prob_negative": float(pr["prob_negative"]),
-        "direction_probability": None, "model_signal_strength": float(pr["confidence"]),
-        "uncertainty": float(pr["uncertainty"]), "direction": direction,
-    }
-    cutoff = make_decision_cutoff(dd) or ""
-    bundle = svc.evidence_adapter.gather(node, dd, cutoff)   # 与 Web 同一证据输入
-    ev_ctx = evidence_direction_context(list(bundle.eligible), cutoff)
-    sim = similar_cases(cases, node, target_date, hour, direction)
-    tail = match_similar_tail_cases(
-        {"node": node, "target_date": target_date, "hour": hour, "direction": direction},
-        cases=cases, tail_threshold=-300.0, hour_window=3, max_cases=5, as_of=True,
-    )
-    risk_fields = {k: float(rr.iloc[0][k])
-                   for k in ("hist_n", "cvar99", "rcvar99", "vol_ratio", "node_drift")} \
-        if not rr.empty else {}
-    avail_rows = _feat_display(cr.to_dict(), dd, target_date)
-    _verdict, decision = run_gate_and_rule(
-        pred_out, risk_fields, ev_ctx, tail, cutoff, features_used=avail_rows)
-    return {"final": decision.decision, "rule_reasons": list(decision.reasons),
-            "expected_return": er}
+    """CLI 的最终建议 == 同一 DecisionService 的 DecisionSnapshot（不重算）。"""
+    dec = svc.run_decision(dd, node, hour)
+    return {"final": dec["final_recommendation"],
+            "rule_reasons": list(dec.get("reason_codes", [])),
+            "expected_return": dec["model_output"].get("expected_return")}
 
 
 class V0311HardeningTests(unittest.TestCase):
@@ -226,12 +189,12 @@ class V0311HardeningTests(unittest.TestCase):
         self.assertIn("source_files", m)
         self.assertIn("row_counts", m)
         self.assertIn("hashes", m)
-        # 每个输出文件哈希与磁盘一致（可复现性）
-        import hashlib  # noqa: PLC0415
+        # V0.3.1.2：跨平台 canonical 哈希（CRLF/LF 归一化，clean clone 可复现）
+        from code.artifact_hash import canonical_sha256  # noqa: PLC0415
         for fname, h in m["hashes"].items():
             self.assertTrue((demo_dir / fname).exists(), fname)
-            digest = hashlib.sha256((demo_dir / fname).read_bytes()).hexdigest()
-            self.assertEqual(digest, h, f"{fname} 哈希应匹配 manifest")
+            digest = canonical_sha256(demo_dir / fname)
+            self.assertEqual(digest, h, f"{fname} 哈希应匹配 manifest（canonical）")
         # metadata 同样诚实声明
         meta = json.loads(metadata_path.read_text(encoding="utf-8"))
         self.assertEqual(meta["data_mode"], MODE_DEMO)
