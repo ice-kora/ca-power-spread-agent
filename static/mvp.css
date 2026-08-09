@@ -225,6 +225,34 @@ main { min-width: 0; }
 .trace-step .badge { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--surface-2); }
 .agent-note { font-size: 11px; color: var(--text-faint); margin-top: 8px; }
 
+/* V0.4.1 会话窗口 */
+.agent-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.agent-actions { display: flex; gap: 6px; }
+.agent-messages { flex: 1; overflow-y: auto; min-height: 200px; max-height: calc(100vh - 340px); margin-top: 6px; padding-right: 2px; }
+.agent-msg { display: flex; margin: 8px 0; }
+.agent-msg.user { justify-content: flex-end; }
+.agent-msg.user .bubble { background: var(--accent-soft); color: var(--text); border-radius: 12px 12px 2px 12px; }
+.agent-msg.assistant { justify-content: flex-start; flex-direction: column; }
+.agent-msg.assistant .bubble { background: var(--surface-2); border-radius: 12px 12px 12px 2px; border-left: 2px solid var(--accent); }
+.bubble { max-width: 96%; padding: 9px 12px; font-size: 13px; line-height: 1.65; word-break: break-word; white-space: pre-wrap; }
+.bubble.md { white-space: normal; }
+.bubble.streaming { border-left-color: var(--warn); }
+.bubble .cursor { display: inline-block; width: 7px; height: 14px; background: var(--accent); animation: blink 1s steps(2) infinite; vertical-align: -2px; margin-left: 1px; }
+.bubble.md h1, .bubble.md h2, .bubble.md h3, .bubble.md h4 { font-size: 1.1em; margin: 8px 0 4px; font-weight: 700; }
+.bubble.md ul, .bubble.md ol { margin: 4px 0 4px 18px; }
+.bubble.md code { font-family: var(--mono); font-size: .86em; background: #eef1f6; padding: 1px 5px; border-radius: 4px; }
+.bubble.md pre { background: #f1f4f8; border-radius: 8px; padding: 8px 10px; overflow-x: auto; font-family: var(--mono); font-size: 12px; margin: 6px 0; }
+.md-table-wrap { overflow-x: auto; margin: 6px 0; }
+.md-table { border-collapse: collapse; font-size: 12px; min-width: 100%; }
+.md-table th, .md-table td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
+.md-table th { background: var(--surface-2); font-weight: 600; }
+.agent-guard { font-size: 12px; color: var(--err); margin-top: 5px; }
+.agent-hint { font-size: 12px; color: var(--warn); padding: 6px 2px; }
+.jump { position: sticky; bottom: 0; margin-top: -20px; text-align: center; cursor: pointer; color: var(--accent); font-size: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 3px 12px; width: fit-content; margin-left: auto; margin-right: auto; }
+.hist-item { display: flex; justify-content: space-between; align-items: center; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; margin: 4px 0; font-size: 12.5px; cursor: pointer; }
+.hist-item:hover { border-color: var(--accent); color: var(--accent); }
+.hist-item .time { color: var(--text-faint); font-size: 11px; }
+
 /* ---------- Empty / Loading / Error ---------- */
 .empty-state { background: var(--surface); border: 1px dashed var(--border-strong); border-radius: var(--radius); padding: 34px 28px; color: var(--text-dim); }
 .empty-state .big { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 6px; }

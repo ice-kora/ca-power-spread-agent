@@ -103,7 +103,15 @@ SYSTEM_PROMPT = (
     "  decision_cutoff = decision day D 10:00 PT (DAM bid cutoff). All features are as-of that moment.\n"
     "\n"
     "Answer in the language of the user's question (Chinese preferred if asked in Chinese). "
-    "Keep the answer concise, structured, and grounded only in tool results."
+    "Keep the answer concise, structured, and grounded only in tool results.\n"
+    "\n"
+    "PRESENTATION (V0.4.1):\n"
+    "- Answer in Chinese-first business language (DA/RT/Risk Gate/PnL may stay English).\n"
+    "- Lead with the conclusion, then give 2-4 concrete reasons.\n"
+    "- Numbers: at most 2 decimal places (e.g. +$58.22/MWh; probabilities as 23%).\n"
+    "- Never output raw JSON, Python field names, or internal identifiers in the visible answer.\n"
+    "- Do NOT say '根据 get_decision 工具返回结果'; instead say '我刚刚检查了当前交易建议' etc.\n"
+    "- Do not use unrevealed outcome. Do not fabricate data. Do not expose chain-of-thought."
 )
 
 ROUTER_INSTRUCTIONS = (
@@ -333,6 +341,50 @@ class OpenAICompatClient(LlmClient):
                 args = {}
             tool_calls.append({"id": tc.get("id"), "tool": fn.get("name"), "arguments": args})
         return {"text": text, "tool_calls": tool_calls}
+
+    def chat_stream(self, messages: List[Dict[str, Any]]) -> Iterator[str]:
+        """流式生成（V0.4.1）：OpenAI-compatible `stream=true`，逐 delta yield content。
+
+        禁止 `response.json()` 后一次性返回——必须真实读取 streaming chunks。
+        httpx 优先，requests 兜底。
+        """
+        payload = {"model": self.model, "temperature": 0,
+                   "messages": self._convert(messages), "stream": True}
+        headers = {"Authorization": "Bearer " + self.api_key,
+                   "Content-Type": "application/json"}
+
+        def _iter_sse_lines(resp_iter):
+            for line in resp_iter:
+                if not line:
+                    continue
+                line = str(line).strip()
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    return
+                try:
+                    obj = json.loads(data)
+                    delta = ((obj.get("choices") or [{}])[0].get("delta") or {}).get("content") or ""
+                    if delta:
+                        yield delta
+                except Exception:
+                    continue
+
+        try:
+            import httpx
+            with httpx.stream("POST", self.base_url + "/chat/completions",
+                              headers=headers, json=payload, timeout=self.timeout) as r:
+                for delta in _iter_sse_lines(r.iter_lines()):
+                    yield delta
+            return
+        except Exception:
+            pass
+        import requests  # fallback
+        with requests.post(self.base_url + "/chat/completions", headers=headers,
+                           json=payload, timeout=self.timeout, stream=True) as r:
+            for delta in _iter_sse_lines(r.iter_lines(decode_unicode=True)):
+                yield delta
 
 
 class AnthropicClient(LlmClient):
@@ -640,6 +692,25 @@ def _chunk_text(text: Any, size: int = 8) -> Iterator[str]:
         yield text[i:i + size]
 
 
+def _tool_summary_zh(tool: str, result: Any) -> str:
+    """工具结果的业务摘要（Agent 轨迹徽标；只做展示，不改交易逻辑）。"""
+    if tool == "get_decision":
+        return "当前建议：" + str(result.get("final_recommendation", "—"))
+    if tool == "get_feature_explanation":
+        feats = result.get("features") or result.get("top_features") or []
+        return f"已确认 {len(feats)} 个参考特征"
+    if tool == "get_evidence":
+        return f"{len(result.get('eligible') or [])} 条可用 · {len(result.get('rejected') or [])} 条被拒"
+    if tool == "get_similar_cases":
+        cases = result.get("cases") or result.get("similar_cases") or []
+        return f"找到 {len(cases)} 条历史案例"
+    if tool == "get_data_provenance":
+        return f"已确认 {len(result.get('provenance') or [])} 个数据来源"
+    if tool == "get_post_trade_review":
+        return "复盘已揭晓" if result.get("status") == "REVEALED" else "未揭晓"
+    return ""
+
+
 def _load_env_file():
     """把项目根 .env（若存在）加载到 os.environ，不覆盖已有变量。
 
@@ -853,8 +924,24 @@ class LLMCopilot:
         return {"role": "user", "content": "\n".join(parts)}
 
     def _build_messages(self, question: str, decision_id: Optional[str],
-                        context: Optional[Dict[str, Any]], tools_called) -> List[Dict[str, Any]]:
+                        context: Optional[Dict[str, Any]], tools_called,
+                        conversation: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        # V0.4.1：注入会话记忆（rolling_summary + 最近消息）。只作对话上下文，
+        # 非权威——回答当前交易问题必须 Tool / DecisionSnapshot 为准。
+        if conversation:
+            mem = []
+            rs = conversation.get("rolling_summary") or ""
+            if rs:
+                mem.append("会话历史摘要: " + str(rs))
+            for msg in (conversation.get("messages") or [])[-6:]:
+                role = "用户" if msg.get("role") == "user" else "助手"
+                mem.append(f"{role}: {str(msg.get('content', ''))[:300]}")
+            if mem:
+                messages.append({"role": "system",
+                                 "content": "CONVERSATION CONTEXT (session memory, 仅作对话上下文，"
+                                            "非权威事实；回答当前交易问题时以工具结果为准):\n"
+                                            + "\n".join(mem)})
         messages.append(self._build_user_message(question, decision_id, context))
         if tools_called:
             for tc in tools_called:
@@ -1053,82 +1140,123 @@ class LLMCopilot:
 
     # ------------------------------------------------------------- 流式 Ask（V0.3.2）
     def ask_stream(self, question: str, decision_id: Optional[str] = None,
-                   context: Optional[Dict[str, Any]] = None) -> Iterator[tuple]:
-        """流式 Ask：真实 Tool 执行 + 数字/方向守卫，逐步产出 (event, data)。
+                   context: Optional[Dict[str, Any]] = None,
+                   conversation: Optional[Dict[str, Any]] = None) -> Iterator[tuple]:
+        """流式 Ask（V0.4.1 Observable Agent Event Protocol）。
 
-        event ∈ {agent_status, tool_start, tool_result, answer_delta, answer_done,
-                  guard, degraded, error}
-        - 只展示 Tool / Action 工作轨迹（Question → Tool → Result → Answer），
-          **不展示任何 LLM private chain-of-thought**。
-        - 预置问题 → 逐工具实时流式（工具真实执行，不伪造）；非预置 → 同步执行后
-          分块输出最终回答（progressive fallback，transport 层视觉流式）。
-        - 守卫 `_assert_answer_integrity` 保留：LLM 不得覆盖工具数字 / 最终方向。
+        event: session_start / agent_status(兼容) / route_start / route_result /
+               tool_start / tool_result / tool_error / answer_start / answer_delta /
+               answer_done / guard_start / guard_result / guard(兼容) / heartbeat /
+               error / session_done。
+        只展示 Tool/Action/Observable Result/Status，绝不展示 private chain-of-thought。
+        预置问题逐工具实时 + LLM 真流式；非预置同步执行后补发真实 tool 事件 + answer 分块。
         """
         question = str(question or "").strip()
-        yield ("agent_status", {"label": "正在分析当前决策…"})
+        try:
+            import uuid as _uuid
+            mid = "msg_" + _uuid.uuid4().hex[:12]
+        except Exception:
+            mid = "msg_" + str(abs(hash(question)) % 10 ** 8)
+        cid = (conversation or {}).get("conversation_id") or ""
+        yield ("session_start", {"conversation_id": cid, "message_id": mid,
+                                 "decision_id": decision_id})
+        yield ("agent_status", {"label": "正在分析当前决策…"})   # 兼容旧事件
         if not question:
             yield ("error", {"code": "EMPTY_QUESTION", "message": "问题为空，请输入要追问的内容。"})
+            yield ("session_done", {"status": "error"})
             return
+        yield ("route_start", {"label": "正在理解你的问题…"})
 
         route = _match_preset(question)
         if route is not None:
             plan = self._build_plan_for_route(route, decision_id, context)
             if plan == "INSUFFICIENT":
-                yield ("answer_delta",
-                       {"text": "无法确定决策对象：请先运行一次决策，或提供 decision_date / node / hour。"})
+                yield ("route_result", {"intent": route, "tools_planned": []})
+                yield ("answer_start", {"label": "正在整理回答…"})
+                yield ("answer_delta", {"text": "无法确定决策对象：请先运行一笔决策，或提供 decision_date / node / hour。"})
                 yield ("answer_done", {})
+                yield ("session_done", {"status": "ok"})
                 return
+            planned = [i.get("tool") for i in plan] if isinstance(plan, list) else []
+            yield ("route_result", {"intent": route, "tools_planned": planned})
             tools_called: List[Dict[str, Any]] = []
-            steps: List[Dict[str, Any]] = []
             for item in plan:
                 tool = str(item.get("tool", ""))
                 args = dict(item.get("args") or {})
                 if args.get("decision_id") == "@latest":
                     args["decision_id"] = self._latest_decision_id()
                     if not args["decision_id"]:
-                        yield ("tool_result", {"tool": tool, "status": "error",
-                                               "label": _TOOL_ZH.get(tool, tool),
-                                               "result_summary": "无法解析 decision_id"})
+                        yield ("tool_error", {"tool": tool, "message": "无法解析 decision_id"})
                         break
+                yield ("heartbeat", {"tick": 1})
                 yield ("tool_start", {"tool": tool, "label": _TOOL_ZH.get(tool, tool)})
-                result = self._execute_tool(tool, args)
+                try:
+                    result = self._execute_tool(tool, args)
+                except Exception as exc:  # noqa: BLE001
+                    tools_called.append({"tool": tool, "args": args,
+                                         "result": {"status": "error", "message": str(exc)},
+                                         "result_summary": str(exc)})
+                    yield ("tool_error", {"tool": tool, "message": str(exc)})
+                    continue
                 summary = _summary_of(result)
                 tools_called.append({"tool": tool, "args": args, "result": result,
                                      "result_summary": summary})
-                steps.append({"stage": "tool", "tool": tool, "arguments": args,
-                              "result_summary": summary, "status": result.get("status", "ok")})
-                yield ("tool_result", {"tool": tool, "status": result.get("status", "ok"),
-                                       "label": _TOOL_ZH.get(tool, tool), "result_summary": summary})
-            if self.client is None:
-                yield ("answer_delta", {"text": LLM_NOT_CONFIGURED_MSG})
-                yield ("answer_done", {})
-                return
-            messages = self._build_messages(question, decision_id, context, tools_called)
-            answer = self._call_final_answer(messages, steps, "preset")
-            if tools_called:
-                ok, detail = _assert_answer_integrity(answer, tools_called)
-                if ok:
-                    yield ("guard", {"status": "PASS", "detail": ""})
+                if result.get("status") == "error":
+                    yield ("tool_error", {"tool": tool, "message": str(result.get("message", ""))})
                 else:
-                    answer = "Agent 回答未通过一致性检查，请重新查询。"
-                    yield ("guard", {"status": "BLOCKED", "detail": detail})
+                    yield ("tool_result", {"tool": tool, "summary": _tool_summary_zh(tool, result)})
+            if self.client is None:
+                yield ("answer_start", {"label": "正在整理回答…"})
+                for chunk in _chunk_text(LLM_NOT_CONFIGURED_MSG):
+                    yield ("answer_delta", {"text": chunk})
+                yield ("answer_done", {})
+                yield ("session_done", {"status": "degraded"})
+                return
+            messages = self._build_messages(question, decision_id, context, tools_called, conversation)
+            yield ("answer_start", {"label": "正在整理回答…"})
+            answer_parts: List[str] = []
+            try:
+                for delta in self.client.chat_stream(messages):
+                    if delta:
+                        answer_parts.append(delta)
+                        yield ("answer_delta", {"text": delta})
+            except Exception as exc:  # noqa: BLE001
+                yield ("error", {"code": "LLM_STREAM_ERROR", "message": str(exc)})
+            answer = "".join(answer_parts)
+            if not answer.strip():
+                answer = "Agent 暂时无法生成自然语言回答。"
+                for chunk in _chunk_text(answer):
+                    yield ("answer_delta", {"text": chunk})
+            yield ("answer_done", {})
+        else:
+            yield ("route_result", {"intent": "router", "tools_planned": []})
+            yield ("heartbeat", {"tick": 1})
+            out = self.ask(question, decision_id, context, trace=False)
+            for tc in out.get("tools_called", []):
+                yield ("tool_start", {"tool": tc.get("tool", ""),
+                                      "label": _TOOL_ZH.get(tc.get("tool", ""), tc.get("tool", ""))})
+                yield ("tool_result", {"tool": tc.get("tool", ""),
+                                       "summary": _tool_summary_zh(tc.get("tool", ""), tc.get("result", {}))})
+            answer = str(out.get("answer", ""))
+            yield ("answer_start", {"label": "正在整理回答…"})
             for chunk in _chunk_text(answer):
                 yield ("answer_delta", {"text": chunk})
             yield ("answer_done", {})
+        yield ("guard_start", {})
+        tools_for_guard = tools_called if route is not None else out.get("tools_called", [])
+        if tools_for_guard:
+            ok, detail = _assert_answer_integrity(answer, tools_for_guard)
+            if ok:
+                yield ("guard_result", {"status": "PASS"})
+                yield ("guard", {"status": "PASS", "detail": ""})
+                yield ("session_done", {"status": "ok"})
+            else:
+                yield ("guard_result", {"status": "BLOCKED", "detail": detail})
+                yield ("guard", {"status": "BLOCKED", "detail": detail})
+                yield ("session_done", {"status": "blocked"})
         else:
-            yield ("agent_status", {"label": "正在调用决策工具…"})
-            out = self.ask(question, decision_id, context, trace=False)
-            for tc in out.get("tools_called", []):
-                yield ("tool_result", {"tool": tc.get("tool", ""), "status": "ok",
-                                       "label": _TOOL_ZH.get(tc.get("tool", ""), tc.get("tool", "")),
-                                       "result_summary": tc.get("result_summary", "")})
-            if out.get("status") == "blocked":
-                yield ("guard", {"status": "BLOCKED",
-                                 "detail": str(out.get("answer", ""))[:200]})
-            for chunk in _chunk_text(out.get("answer", "")):
-                yield ("answer_delta", {"text": chunk})
-            yield ("answer_done", {})
-
+            yield ("guard_result", {"status": "PASS"})
+            yield ("session_done", {"status": "ok"})
     def _response(self, answer: str, tools_called, question: str, trace_enabled: bool,
                   trace_steps: List[Dict[str, Any]], status: str,
                   mode: str) -> Dict[str, Any]:
@@ -1191,13 +1319,15 @@ def ask(question: str, decision_id: Optional[str] = None,
 
 def ask_stream(question: str, decision_id: Optional[str] = None,
                context: Optional[Dict[str, Any]] = None,
+               conversation: Optional[Dict[str, Any]] = None,
                service=None, **kw) -> Iterator[tuple]:
     """流式 Ask（SSE transport）主入口：产出 (event, data) 事件序列。"""
     if not kw:
         cp = default_copilot(service=service)
     else:
         cp = make_copilot(service=service, **kw)
-    return cp.ask_stream(question, decision_id=decision_id, context=context)
+    return cp.ask_stream(question, decision_id=decision_id, context=context,
+                         conversation=conversation)
 
 
 def copilot_status(service=None, **kw) -> Dict[str, Any]:

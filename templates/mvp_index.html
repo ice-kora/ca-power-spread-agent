@@ -50,14 +50,23 @@
     <main id="main-col"></main>
     <aside class="agent-panel">
       <div class="agent-chat">
-        <h2>问交易 Agent <span class="agent-chip">交易系统操作台</span></h2>
+        <div class="agent-head">
+          <h2>问交易 Agent <span class="agent-chip" id="agent-chip">先运行一笔决策</span></h2>
+          <div class="agent-actions">
+            <button class="btn secondary small" id="btn-new-session">新会话</button>
+            <button class="btn secondary small" id="btn-history">历史会话</button>
+            <button class="btn secondary small" id="btn-stop" style="display:none">停止</button>
+          </div>
+        </div>
+        <div id="history-drawer" style="display:none"></div>
         <div class="agent-sub">询问这笔交易为什么做、风险是什么、用了哪些数据，以及历史上发生过什么。</div>
         <div class="agent-quick" id="quick-q"></div>
+        <div class="agent-messages" id="agent-messages"></div>
+        <div class="jump" id="jump-down" style="display:none">↓ 查看最新消息</div>
         <div class="agent-input">
-          <input type="text" id="inp-question" placeholder="问这笔交易…">
+          <input type="text" id="inp-question" placeholder="问这笔交易…（Enter 发送，Shift+Enter 换行）">
           <button class="btn secondary small" id="btn-ask">发送</button>
         </div>
-        <div class="agent-out" id="ask-out"></div>
         <div class="agent-note">Agent 只解释系统结果，不改变任何数字与最终建议；不展示模型私有思考过程。</div>
       </div>
       <details class="detail" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px">

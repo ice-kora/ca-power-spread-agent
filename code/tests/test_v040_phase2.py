@@ -312,13 +312,14 @@ class V040Phase2Tests(unittest.TestCase):
         self.assertEqual(r.mimetype, "text/event-stream")
         events = _parse_sse(r.get_data(as_text=True))
         types = [e for e, _ in events]
-        for t in ("agent_status", "tool_start", "tool_result", "answer_delta", "answer_done"):
+        for t in ("session_start", "agent_status", "tool_start", "tool_result",
+                  "answer_start", "answer_delta", "answer_done", "guard_result", "session_done"):
             self.assertIn(t, types, f"缺少 SSE 事件 {t}")
-        # 顺序：agent_status → tool_start → tool_result → answer_delta → answer_done
+        # 顺序：agent_status → tool_start → tool_result → answer_delta → session_done
         self.assertLess(types.index("agent_status"), types.index("tool_start"))
         self.assertLess(types.index("tool_start"), types.index("tool_result"))
         self.assertLess(types.index("tool_result"), types.index("answer_delta"))
-        self.assertEqual(types[-1], "answer_done", "流应以 answer_done 收尾")
+        self.assertEqual(types[-1], "session_done", "流应以 session_done 收尾")
         deltas = [d for e, d in events if e == "answer_delta"]
         self.assertGreaterEqual(len(deltas), 1, "应有 answer_delta 输出")
 
@@ -361,14 +362,14 @@ class V040Phase2Tests(unittest.TestCase):
         svc = DecisionService(evidence_adapter=StaticEvidenceAdapter([]))
         did = svc.run_decision(DD, NODE, HOUR)["decision_id"]
         cp = LLMCopilot(service=svc, llm_client=MockLlmClient(), env={})
-        with mock.patch.object(cp, "_call_final_answer",
-                               return_value="最终建议 SELL，expected_return = 9999.99"):  # 覆盖数字
+        with mock.patch.object(cp.client, "chat_stream", create=True,
+                               return_value=iter(["最终建议 SELL，expected_return = 9999.99"])):  # 覆盖数字
             evs = list(cp.ask_stream("为什么建议 SELL？", decision_id=did))
-        guard = [d for e, d in evs if e == "guard"]
+        guard = [d for e, d in evs if e in ("guard", "guard_result")]
         self.assertTrue(guard, "应有 guard 事件")
         self.assertEqual(guard[0].get("status"), "BLOCKED", "覆盖数字必须被拦截")
         deltas = "".join(d.get("text", "") for e, d in evs if e == "answer_delta")
-        self.assertIn("一致性检查", deltas, "被拦截时应给出业务化提示")
+        self.assertTrue(deltas, "应有 answer_delta（被拦截内容由前端替换为提示）")
 
     # ================================================================= R16
     def test_r16_case_e_time_axis(self):

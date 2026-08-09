@@ -112,6 +112,13 @@ app = Flask(__name__)
 app.config["JSON_AS_ASCII"] = False
 app.config["JSON_SORT_KEYS"] = False
 
+# V0.4.1：后端会话记忆（data/agent_sessions/ JSON store；供 refresh 恢复）
+try:
+    from code.agent_memory import SessionManager  # noqa: F401
+    _SESSION_MGR = SessionManager()
+except Exception:  # pragma: no cover
+    _SESSION_MGR = None
+
 _OFFLINE_DEFAULT = "--offline" in sys.argv  # 默认证据模式（离线则不取外部 GFS）
 DEFAULT_EVIDENCE = "offline" if _OFFLINE_DEFAULT else "real"
 
@@ -843,10 +850,12 @@ def _copilot_for_decision(decision_id: Optional[str]):
     return _lc.make_copilot(service=svc)
 
 
-def ask_copilot_stream(question: str, decision_id: Optional[str] = None):
+def ask_copilot_stream(question: str, decision_id: Optional[str] = None,
+                       conversation: Optional[Dict[str, Any]] = None):
     """流式 Ask：委托 llm_copilot.ask_stream，产出 (event, data) 事件序列。"""
     cp = _copilot_for_decision(decision_id)
-    return cp.ask_stream(question=question, decision_id=decision_id)
+    return cp.ask_stream(question=question, decision_id=decision_id,
+                         conversation=conversation)
 
 
 # ---------------------------------------------------------------------------
@@ -1077,24 +1086,48 @@ def api_ask():
 
 @app.post("/api/ask/stream")
 def api_ask_stream():
-    """SSE 流式 Ask（V0.3.2）：agent_status / tool_start / tool_result /
-    answer_delta / answer_done / guard / error。Tool 为真实执行，Guard 保留。"""
+    """SSE 流式 Ask（V0.4.1 Observable Event Protocol）：session_start / route_start /
+    tool_start / tool_result / tool_error / answer_start / answer_delta / answer_done /
+    guard_result / heartbeat / session_done。Tool 为真实执行，Guard 保留。
+    可带 conversation（会话记忆）与 decision_id（后端 SessionManager 持久化）。"""
     data = request.get_json(force=True, silent=True) or {}
     question = str(data.get("question", "") or "").strip()
     decision_id = (data.get("decision_id") or None)
+    conversation = data.get("conversation") or None
     if not question:
         return _error("INVALID_REQUEST", "缺少问题（question 必填）。",
                       "请在 Ask Agent 输入框输入问题后重试。", 400)
     if decision_id and _find_service(decision_id) is None:
         return _error("NOT_FOUND", f"决策 {decision_id!r} 不存在（先运行一次决策）。",
                       ERROR_CATALOG["NOT_FOUND"]["action"], 404)
+    # 后端会话（data/agent_sessions/）——绑定 decision_id，跨刷新恢复
+    conv = None
+    if _SESSION_MGR is not None and decision_id:
+        try:
+            conv = _SESSION_MGR.get_or_create(decision_id, title=question[:24])
+        except Exception:  # noqa: BLE001
+            conv = None
 
     def gen():
         yield "retry: 1000\n\n"
+        answer_parts = []
         try:
-            for ev, payload in ask_copilot_stream(question, decision_id):
+            for ev, payload in ask_copilot_stream(question, decision_id, conversation):
+                if ev == "session_start" and conv:
+                    payload = dict(payload)
+                    payload["conversation_id"] = conv["conversation_id"]
+                if ev == "answer_delta":
+                    answer_parts.append(payload.get("text", ""))
                 s = json.dumps(payload, ensure_ascii=False, default=str)
                 yield f"event: {ev}\ndata: {s}\n\n"
+                if ev == "session_done" and conv and _SESSION_MGR is not None:
+                    try:
+                        _SESSION_MGR.append_message(conv["conversation_id"], role="user", content=question)
+                        _SESSION_MGR.append_message(conv["conversation_id"], role="assistant",
+                                                    content="".join(answer_parts))
+                        _SESSION_MGR.compress(conv)
+                    except Exception:  # noqa: BLE001
+                        pass
         except Exception as exc:  # noqa: BLE001
             s = json.dumps({"message": f"LLM ERROR: {type(exc).__name__}: {exc}"},
                            ensure_ascii=False, default=str)
@@ -1105,6 +1138,25 @@ def api_ask_stream():
     resp.headers["X-Accel-Buffering"] = "no"
     resp.headers["Connection"] = "keep-alive"
     return resp
+
+
+@app.get("/api/ask/sessions")
+def api_ask_sessions():
+    """历史会话列表（后端持久化；供 Agent 面板"历史会话"恢复）。"""
+    if _SESSION_MGR is None:
+        return jsonify({"sessions": []})
+    return jsonify({"sessions": _SESSION_MGR.list()})
+
+
+@app.get("/api/ask/sessions/<cid>")
+def api_ask_session(cid):
+    """获取单个会话（refresh 恢复聊天历史）。"""
+    if _SESSION_MGR is None:
+        return _error("NOT_FOUND", "会话存储未启用。", "", 404)
+    conv = _SESSION_MGR.get(cid)
+    if conv is None:
+        return _error("NOT_FOUND", f"会话 {cid!r} 不存在。", "", 404)
+    return jsonify(conv)
 
 
 # ---------------------------------------------------------------------------
