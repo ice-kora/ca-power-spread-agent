@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAISO 交易决策助手 · Agent（原型）</title>
+<link rel="stylesheet" href="_concept_c.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="proto-flag">PROTOTYPE ONLY · 静态演示值 · 不绑定生产逻辑</div>
+
+  <header>
+    <h1>CAISO 交易决策助手 <span class="tag">Trading Decision Agent</span></h1>
+    <div class="sys-strip">
+      <span><span class="dot"></span>Agent 已连接</span>
+      <span>数据：<b>DEMO</b></span>
+      <span>自动交易：<b>关闭</b></span>
+    </div>
+  </header>
+
+  <!-- Hero 简化：建议 + 决策条 + 锁定（首屏常驻） -->
+  <div class="hero" style="padding:18px 22px">
+    <div class="hero-head">
+      <div class="hero-who">CONTROLX · <b>次日 H3</b> · 报价截止 10:00 PT</div>
+      <div class="hero-rec SELL"><div class="cn" style="font-size:30px">卖出日前</div><div class="en">SELL DA</div></div>
+    </div>
+    <div class="decision-bar" style="grid-template-columns:repeat(4,1fr);margin-top:12px">
+      <div class="db"><div class="k">预计 DA − RT</div><div class="v num">+$59.79/MWh</div></div>
+      <div class="db"><div class="k">风险检查</div><div class="v small ok">通过</div></div>
+      <div class="db"><div class="k">模型信号</div><div class="v small">偏弱</div></div>
+      <div class="db"><div class="k">截止前可用证据</div><div class="v small">1 条</div></div>
+    </div>
+    <div class="hero-actions" style="margin-top:12px"><button class="btn">锁定本次决策</button></div>
+  </div>
+
+  <!-- ============ Agent 操作台（流式 + 真实工具轨迹） ============ -->
+  <div class="agent">
+    <div class="agent-head">问交易 Agent <span class="agent-chip">CONTROLX · H3 · 建议 SELL DA</span></div>
+    <div class="agent-sub">可追问这笔交易为什么做、用了哪些数据、有哪些风险、以及历史案例。</div>
+    <div class="agent-quick">
+      <button>为什么建议 SELL？</button>
+      <button>为什么不是 BUY？</button>
+      <button>最大的风险是什么？</button>
+      <button>哪些信息被拒绝了？</button>
+      <button>用了哪些数据？</button>
+      <button>有没有类似案例？</button>
+      <button class="disabled">这笔为什么亏了？（揭晓后）</button>
+    </div>
+    <div class="agent-input"><input value="为什么建议 SELL？"><button class="btn secondary small">发送</button></div>
+
+    <!-- Observable Agent Execution Trace（只显示真实 Tool/Action） -->
+    <div class="agent-trace">
+      <div class="trace-step"><span class="s ok">✓ 读取当前交易建议</span><span class="time">0.12s</span><span class="badge">SELL DA</span></div>
+      <div class="trace-step"><span class="s ok">✓ 检查模型判断</span><span class="time">0.05s</span><span class="badge">偏弱</span></div>
+      <div class="trace-step"><span class="s ok">✓ 检查风险条件</span><span class="time">0.02s</span><span class="badge">通过</span></div>
+      <div class="trace-step"><span class="s ok">✓ 查询外部证据</span><span class="time">0.10s</span><span class="badge">1 条可用</span></div>
+      <div class="trace-step"><span class="s run">○ 生成解释…</span></div>
+    </div>
+
+    <!-- Streaming Answer（逐步出现 + 光标） -->
+    <div class="agent-answer">这笔交易建议卖出日前，主要有三个原因：<span class="cursor"></span></div>
+    <div class="agent-note" style="font-size:11px;color:var(--text-faint);margin-top:8px">以上为 Agent 工作轨迹（Tool / Action / Result），不展示模型私有思考过程。技术调用详情可展开查看。</div>
+    <details class="detail"><summary>查看技术 Trace</summary><div class="detail-body">tool=get_decision · args={"decision_id":"…"} · result_summary=… · duration 0.12s · guard PASS<br>→ <a href="#">查看原始 JSON</a></div></details>
+  </div>
+
+  <!-- 预计的流式回答（完成态示意） -->
+  <div class="agent" style="border-left:3px solid var(--ok)">
+    <div class="agent-head">交易 Agent</div>
+    <div class="agent-answer" style="border-left:none">
+      这笔交易建议卖出日前，主要有三个原因：
+      ① 预计 DA−RT 为正 <b>+$59.79/MWh</b>，方向偏 SELL；
+      ② 当前风险检查通过，没有触发禁止交易条件；
+      ③ 截止前可用的外部证据没有提供相反方向信号。
+      需要注意的是，当前模型信号偏弱（0.23），所以这是实验性建议，而不是高置信度交易机会。
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

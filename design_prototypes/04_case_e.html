@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAISO 交易决策助手 · 未来信息被拒绝（原型）</title>
+<link rel="stylesheet" href="_concept_c.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="proto-flag">PROTOTYPE ONLY · 静态演示值 · 不绑定生产逻辑</div>
+
+  <header>
+    <h1>CAISO 交易决策助手 <span class="tag">Trading Decision Agent</span></h1>
+    <div class="sys-strip">
+      <span><span class="dot"></span>Agent 已连接</span>
+      <span>数据：<b>DEMO</b></span>
+      <span>自动交易：<b>关闭</b></span>
+    </div>
+  </header>
+
+  <div class="controls">
+    <div class="field"><label>演示案例</label><select><option>案例 E｜未来信息被拒绝</option></select></div>
+    <div class="field"><label>CONTROLX · ZP26 · 2026-07-08 → 次日 H2</label></div>
+  </div>
+
+  <!-- Hero：建议不受被拒信息影响（NO_TRADE 示例） -->
+  <div class="hero">
+    <div class="hero-head">
+      <div class="hero-who">CONTROLX · <b>次日 H2</b> · 报价截止 10:00 PT</div>
+      <div class="hero-rec NO_TRADE"><div class="cn">不交易</div><div class="en">NO TRADE</div></div>
+    </div>
+    <div class="decision-bar">
+      <div class="db"><div class="k">预计 DA − RT</div><div class="v num">−$76.16/MWh</div></div>
+      <div class="db"><div class="k">风险检查</div><div class="v small err">拒绝</div></div>
+      <div class="db"><div class="k">模型信号</div><div class="v small">中等</div></div>
+      <div class="db"><div class="k">截止前可用证据</div><div class="v small">0 条</div></div>
+    </div>
+    <div class="hero-explain">当前信号或风险条件不足以支持交易（风控拒绝买入日前），因此系统建议不交易。下方被拒绝的天气信息不影响本建议。</div>
+  </div>
+
+  <!-- ============ Time Gate 中央聚光灯 ============ -->
+  <div class="act">
+    <div class="act-title">外部信息 · 系统用了什么 / 拒绝了什么</div>
+    <div class="tg-stage">
+      <div class="tg-grid">
+        <div class="tg-col ok">
+          <div class="col-t">✓ 本次允许使用的信息</div>
+          <div>GFS 06Z 天气预测</div>
+          <div style="font-size:12.5px;color:var(--text-dim);margin-top:4px">截止前可获得 · 已作为辅助证据</div>
+          <details class="detail"><summary>查看技术详情</summary><div class="detail-body">初始化 / 可用时间 / 决策截止（UTC）。</div></details>
+        </div>
+        <div class="tg-col err">
+          <div class="col-t">✕ 被系统拒绝的信息 <span class="not-used" style="margin-left:8px">NOT USED 未参与决策</span></div>
+          <div style="font-weight:600">GFS 18Z 天气预测</div>
+          <div style="font-size:12.5px;color:var(--text-dim);margin-top:4px">报价截止：10:00 PT · 该预报开始生成：11:00 PT · 实际可用时间：无法证明</div>
+        </div>
+      </div>
+
+      <!-- 截止时间轴 -->
+      <div class="timeline">
+        <div class="cut"></div>
+        <div class="item ok">✓ GFS 06Z</div>
+        <div class="item err">✕ GFS 18Z</div>
+      </div>
+
+      <div class="tg-note">它在报价截止以后才开始生成，因此当时不可能被交易员获得。</div>
+      <div style="font-size:12.5px;color:var(--text-dim);margin-top:8px">系统宁可不用，也绝不使用未来信息；这条信息只进入事后复盘，不影响当时建议。</div>
+      <details class="detail"><summary>查看技术详情（reason_code 等）</summary><div class="detail-body">
+        <div class="kv" style="grid-template-columns:1fr">
+          <div class="item"><div class="k">reason_code</div><div class="v">INITIALIZATION_AFTER_CUTOFF（AVAILABLE_AT_UNKNOWN）</div></div>
+          <div class="item"><div class="k">decision_cutoff</div><div class="v">2026-07-08T17:00:00 UTC</div></div>
+          <div class="item"><div class="k">initialization_time</div><div class="v">2026-07-08T18:00:00 UTC</div></div>
+          <div class="item"><div class="k">available_at</div><div class="v">UNKNOWN / NOT PROVEN（不伪造）</div></div>
+        </div>
+      </div></details>
+    </div>
+  </div>
+
+  <!-- 审计摘要：Provenance PASS / Availability 如实 WARNING / Time Gate PASS -->
+  <div class="audit-sum" style="margin-top:18px">
+    <span class="overall warn">WARNING</span><span>审计：数据来源 PASS · 可用时刻未证明（如实提醒）· 时间门判定 PASS</span>
+    <details class="detail" style="display:inline"><summary>查看审计详情</summary><div class="detail-body">Evidence Availability = WARNING（诚实标注，不隐藏）· Evidence Provenance = PASS（来源 / 快照 contains_mock=false 已验证）。</div></details>
+  </div>
+
+</div>
+</body>
+</html>

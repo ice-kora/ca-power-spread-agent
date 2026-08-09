@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAISO 交易决策助手 · 建议（原型）</title>
+<link rel="stylesheet" href="_concept_c.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="proto-flag">PROTOTYPE ONLY · 静态演示值 · 不绑定生产逻辑</div>
+
+  <header>
+    <h1>CAISO 交易决策助手 <span class="tag">Trading Decision Agent</span></h1>
+    <div class="sys-strip">
+      <span><span class="dot"></span>Agent 已连接</span>
+      <span>数据：<b>DEMO</b></span>
+      <span>自动交易：<b>关闭</b></span>
+      <a href="#">系统边界</a>
+    </div>
+  </header>
+
+  <!-- 参数行：折叠为一行已选参数 -->
+  <div class="controls">
+    <div class="field"><label>演示案例</label><select><option>案例 A｜正常 SELL 决策</option></select></div>
+    <div class="field"><label>CONTROLX · ZP26 · 2026-07-16 → 次日 H3</label></div>
+    <button class="btn small secondary" style="margin-left:auto">重新选择</button>
+  </div>
+
+  <!-- ============ Hero：唯一第一视觉中心 ============ -->
+  <div class="hero">
+    <div class="hero-head">
+      <div class="hero-who">CONTROLX · <b>次日 H3</b> · 报价截止 10:00 PT</div>
+      <div class="hero-rec SELL">
+        <div class="cn">卖出日前</div>
+        <div class="en">SELL DA</div>
+      </div>
+    </div>
+    <div class="decision-bar">
+      <div class="db"><div class="k">预计 DA − RT</div><div class="v num">+$59.79/MWh</div></div>
+      <div class="db"><div class="k">风险检查</div><div class="v small ok">通过</div></div>
+      <div class="db"><div class="k">模型信号</div><div class="v small">偏弱</div></div>
+      <div class="db"><div class="k">截止前可用证据</div><div class="v small">1 条</div></div>
+    </div>
+    <div class="hero-explain">系统预计次日日前价格高于实时价格（预计 DA−RT 为正），且没有触发禁止交易的风险条件，因此白盒规则建议卖出日前——日前卖出、实时买回。</div>
+    <div class="hero-actions">
+      <button class="btn">锁定本次决策</button>
+      <button class="btn secondary">为什么这样建议？</button>
+      <span class="muted">锁定后，之后发生的信息不会反向修改本次建议</span>
+    </div>
+  </div>
+
+  <!-- ============ 分幕一：为什么（三问，非等尺寸卡） ============ -->
+  <div class="act">
+    <div class="act-title"><span class="n">①</span> 为什么这样建议？</div>
+    <div class="why-grid">
+      <div class="why-card">
+        <h3>模型怎么看？</h3>
+        <div class="kv" style="grid-template-columns:1fr 1fr">
+          <div class="item"><div class="k">预计价差</div><div class="v num">+$59.79</div></div>
+          <div class="item"><div class="k">方向倾向</div><div class="v">偏 SELL</div></div>
+        </div>
+        <div class="note">模型预计日前价高于实时价，但信号偏弱，模型意见仅作量化参考。</div>
+        <details class="detail"><summary>查看模型技术数据</summary><div class="detail-body"><div class="kv" style="grid-template-columns:1fr">
+          <div class="item"><div class="k">expected_return</div><div class="v">59.7937</div></div>
+          <div class="item"><div class="k">model_signal_strength</div><div class="v">0.2338</div></div>
+          <div class="item"><div class="k">uncertainty</div><div class="v">0.5722</div></div>
+        </div></div></details>
+      </div>
+      <div class="why-card hl">
+        <h3>风控让不让做？</h3>
+        <div class="big ok">通过</div>
+        <div class="note">当前没有命中系统定义的风险拦截条件。</div>
+        <details class="detail"><summary>查看风控详情</summary><div class="detail-body">无风险规则命中（PASS）。</div></details>
+      </div>
+      <div class="why-card">
+        <h3>最终规则是什么？</h3>
+        <div class="rule-flow">预计 DA−RT &gt; 0 <span class="arrow">+</span> 风险通过 <span class="arrow">↓</span> <b>卖出日前 SELL DA</b></div>
+        <div class="note">卖出日前 = 日前卖出、实时买回；若最终 DA 高于 RT，本笔盈利。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 分幕二：本次决策依据 ============ -->
+  <div class="act">
+    <div class="act-title"><span class="n">②</span> 本次决策依据</div>
+    <div class="ck-list">
+      <div class="ck-item"><span class="mark ok">✓</span><div><div class="t">历史价格（DA / RT）</div><div class="d">公司文件 · 已与 CAISO OASIS 对账 · 用于模型</div></div></div>
+      <div class="ck-item"><span class="mark ok">✓</span><div><div class="t">历史负荷与 2DA 负荷预测</div><div class="d">公司文件 · 历史滞后，不穿越</div></div></div>
+      <div class="ck-item"><span class="mark ok">✓</span><div><div class="t">历史天气（滞后特征）</div><div class="d">历史天气数据 · 不使用目标日实际天气</div></div></div>
+      <div class="ck-item"><span class="mark ok">✓</span><div><div class="t">外部 GFS 06Z 预测</div><div class="d">截止前可获得 · 作为辅助证据，不进入模型特征</div></div></div>
+    </div>
+    <details class="detail"><summary>查看数据血缘</summary><div class="detail-body">原始文件名、available_at、availability_basis、source_type 等完整字段。</div></details>
+  </div>
+
+  <!-- ============ 分幕三：类似历史案例 ============ -->
+  <div class="act">
+    <div class="act-title"><span class="n">③</span> 类似历史案例</div>
+    <div class="case-card">
+      <div class="case-head"><span class="case-date">2026-07-08 · CONTROLX · H2</span><span><span class="pill ok" style="background:var(--sell-bg);color:var(--sell)">SELL</span> <span class="case-outcome pos">+$2,216/MWh</span></span></div>
+      <div class="case-lesson">历史上该节点曾出现极端价差，方向机会存在，但尾部风险较高。</div>
+      <details class="detail"><summary>查看案例审计信息</summary><div class="detail-body">case_id、case_available_at、raw lesson。</div></details>
+    </div>
+  </div>
+
+  <!-- 审计摘要（默认折叠） -->
+  <div class="audit-sum" style="margin-top:18px"><span class="overall ok">PASS</span><span>6 项通过 · 1 项提醒</span> <details class="detail" style="display:inline"><summary>查看审计详情</summary><div class="detail-body">Feature Eligibility / Evidence Time Gate / Evidence Availability / Evidence Provenance / Mock Data / Case As-of / Outcome Leakage（真实 PASS/WARNING）。</div></details></div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAISO 交易决策助手 · 揭晓与复盘（原型）</title>
+<link rel="stylesheet" href="_concept_c.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="proto-flag">PROTOTYPE ONLY · 静态演示值 · 不绑定生产逻辑</div>
+
+  <header>
+    <h1>CAISO 交易决策助手 <span class="tag">Trading Decision Agent</span></h1>
+    <div class="sys-strip">
+      <span><span class="dot"></span>Agent 已连接</span>
+      <span>数据：<b>DEMO</b></span>
+      <span>自动交易：<b>关闭</b></span>
+    </div>
+  </header>
+
+  <!-- Hero：已锁定状态 + 揭晓按钮 -->
+  <div class="hero">
+    <div class="hero-head">
+      <div class="hero-who">CONTROLX · <b>次日 H3</b> · 报价截止 10:00 PT</div>
+      <div class="hero-rec SELL"><div class="cn">卖出日前</div><div class="en">SELL DA</div></div>
+    </div>
+    <div class="decision-bar" style="grid-template-columns:repeat(4,1fr)">
+      <div class="db"><div class="k">预计 DA − RT</div><div class="v num">+$59.79/MWh</div></div>
+      <div class="db"><div class="k">风险检查</div><div class="v small ok">通过</div></div>
+      <div class="db"><div class="k">模型信号</div><div class="v small">偏弱</div></div>
+      <div class="db"><div class="k">截止前可用证据</div><div class="v small">1 条</div></div>
+    </div>
+    <div class="hero-actions" style="margin-top:14px">
+      <span class="lock-seal">🔒 决策已锁定</span>
+      <button class="btn">揭晓真实结果</button>
+      <span class="muted">锁定后，之后发生的信息不会反向修改本次建议</span>
+    </div>
+  </div>
+
+  <!-- ============ 实际结果（亏损不隐藏） ============ -->
+  <div class="act">
+    <div class="act-title">实际结果</div>
+    <div class="result-box loss">
+      <div class="r-title">本次方向判断错误</div>
+      <div class="result-grid">
+        <div class="rg"><div class="k">日前价格 DA</div><div class="v num">$1,234.56/MWh</div></div>
+        <div class="rg"><div class="k">实时价格 RT</div><div class="v num">$1,293.62/MWh</div></div>
+        <div class="rg"><div class="k">实际 DA − RT</div><div class="v num">−$59.06</div></div>
+        <div class="rg"><div class="k">本次 SELL 结果</div><div class="v num">−$59.06/MWh</div></div>
+      </div>
+      <div style="margin-top:12px;font-size:14px">实际价差与模型预测方向相反，本次卖出日前亏损。</div>
+    </div>
+  </div>
+
+  <!-- ============ 复盘四问 ============ -->
+  <div class="act">
+    <div class="act-title">复盘</div>
+    <div class="case-card">
+      <div class="review-q"><div class="q">发生了什么？</div><div class="a">实际价差与本次建议方向相反，本次 SELL 产生亏损。</div></div>
+      <div class="review-q"><div class="q">为什么？</div><div class="a">模型本身信号偏弱、不确定性较高，最终市场走势发生反转。</div></div>
+      <div class="review-q"><div class="q">系统当时有没有偷看到后来信息？</div><div class="a"><span class="ok">没有。</span> 任何晚于报价截止的信息（如 GFS 18Z）都明确被拒绝，本建议只基于截止前可用信息。</div></div>
+      <div class="review-q"><div class="q">有什么教训？</div><div class="a">当前模型对尾部价格变化仍不够稳定，未来需重点改善 EV / Tail Risk 建模；本次属实验性范围。</div></div>
+      <details class="detail"><summary>查看结构化复盘标签</summary><div class="detail-body">NORMAL_UNCERTAINTY / UNFAVORABLE_REALIZATION · direction_correct=false · model_prediction_error=-118.85</div></details>
+    </div>
+  </div>
+
+  <!-- Agent：Reveal 后追问"这笔为什么亏了" -->
+  <div class="agent">
+    <div class="agent-head">问交易 Agent <span class="agent-chip">已揭晓 · 亏损</span></div>
+    <div class="agent-trace">
+      <div class="trace-step"><span class="s ok">✓ 读取当前交易建议</span><span class="badge">SELL DA</span></div>
+      <div class="trace-step"><span class="s ok">✓ 查询事后复盘</span><span class="badge">方向错误 · PnL −$59.06</span></div>
+      <div class="trace-step"><span class="s ok">✓ 查询类似案例</span><span class="badge">尾部风险案例</span></div>
+      <div class="trace-step"><span class="s ok">✓ 一致性检查通过</span></div>
+    </div>
+    <div class="agent-answer">本次判断错误：建议卖出日前，实际 DA−RT 为 <b>−$59.06/MWh</b>，亏损 $59.06/MWh。模型未预见实时价格跳升；该节点历史尾部风险较高，这类偏离属模型待改进范围。</div>
+  </div>
+
+</div>
+</body>
+</html>

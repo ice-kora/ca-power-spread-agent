@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAISO 交易决策助手 · Initial（原型）</title>
+<link rel="stylesheet" href="_concept_c.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="proto-flag">PROTOTYPE ONLY · 静态演示值 · 不绑定生产逻辑</div>
+
+  <header>
+    <h1>CAISO 交易决策助手 <span class="tag">Trading Decision Agent</span></h1>
+    <div class="sys-strip">
+      <span><span class="dot"></span>Agent 已连接</span>
+      <span>数据：<b>DEMO</b></span>
+      <span>自动交易：<b>关闭</b></span>
+      <span>模型：实验性</span>
+      <a href="#">系统边界</a> · <a href="#">数据来源</a> · <a href="#">原理</a>
+    </div>
+  </header>
+
+  <!-- 参数行：单行紧凑，不占首屏主位 -->
+  <div class="controls">
+    <div class="field"><label>日期</label><input type="date" value="2026-07-16"></div>
+    <div class="field"><label>节点</label><select><option>CONTROLX · ZP26</option></select></div>
+    <div class="field"><label>小时</label><select><option>H3</option></select></div>
+    <div class="field"><label>演示案例</label><select><option>案例 A｜正常 SELL 决策</option></select></div>
+    <button class="btn">生成交易建议</button>
+  </div>
+
+  <!-- 空态：INITIAL -->
+  <div class="empty-state">
+    <div class="big">选择一笔交易，查看系统建议</div>
+    <p>设定交易日期 / 节点 / 小时，或直接选一个演示案例，然后点击「生成交易建议」。</p>
+    <p style="margin-top:8px">系统会在报价截止前，用当时可获得的信息给出买入日前 / 卖出日前 / 不交易的建议，并说明原因。</p>
+  </div>
+
+  <!-- Agent 操作台（未生成决策时引导） -->
+  <div class="agent">
+    <div class="agent-head">问交易 Agent <span class="agent-chip">先运行一笔决策</span></div>
+    <div class="agent-sub">Agent 会调用交易系统工具，解释这笔交易为什么做、用了哪些数据、有哪些风险。</div>
+    <div class="agent-quick">
+      <button class="disabled">为什么建议卖出？</button>
+      <button class="disabled">最大风险是什么？</button>
+      <button class="disabled">哪些信息被拒绝了？</button>
+    </div>
+    <div class="agent-input"><input placeholder="先运行一笔决策，再开始追问…" disabled><button class="btn secondary small" disabled>发送</button></div>
+    <div class="agent-note" style="font-size:11px;color:var(--text-faint);margin-top:8px">Agent 只解释系统结果，不改变任何数字与最终建议；不展示模型私有思考过程。</div>
+  </div>
+
+</div>
+</body>
+</html>
