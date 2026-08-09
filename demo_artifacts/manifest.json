@@ -1,0 +1,78 @@
+{
+  "artifact_version": "1.0",
+  "generated_at": "2026-08-09T08:25:09Z",
+  "source_commit": "78f4e274275210d05fb100483357e6fc9cff2472",
+  "data_mode": "DEMO",
+  "contains_mock": false,
+  "contains_future_outcome": true,
+  "future_outcome_note": "canonical_demo 含 actual_da/actual_rtpd/actual_return（事后结算值）。它们在决策时点不可见：仅当决策 LOCK 后经 Reveal（run_decision(reveal=True) / reveal_decision / Tool 6 get_post_trade_review）才输出，绝不穿越。",
+  "golden_cases": [
+    {
+      "id": "B",
+      "label": "B · SELL 盈利（彩票右尾）",
+      "decision_date": "2026-07-16",
+      "target_date": "2026-07-17",
+      "node": "CONTROLX_1_N001",
+      "hour": 3
+    },
+    {
+      "id": "C1",
+      "label": "C1 · NO_TRADE 避险（RiskGate 成功）",
+      "decision_date": "2026-07-08",
+      "target_date": "2026-07-09",
+      "node": "CONTROLX_1_N001",
+      "hour": 2
+    },
+    {
+      "id": "C2",
+      "label": "C2 · NO_TRADE 弱信号",
+      "decision_date": "2026-07-10",
+      "target_date": "2026-07-11",
+      "node": "SNLNDRO_1_N001",
+      "hour": 10
+    },
+    {
+      "id": "D",
+      "label": "D · 模型 SELL 但错（诚实展示）",
+      "decision_date": "2026-07-20",
+      "target_date": "2026-07-21",
+      "node": "SNLNDRO_1_N001",
+      "hour": 20
+    },
+    {
+      "id": "E",
+      "label": "E · Evidence 被 Time Gate 拒（同 C1 参数）",
+      "decision_date": "2026-07-08",
+      "target_date": "2026-07-09",
+      "node": "CONTROLX_1_N001",
+      "hour": 2
+    }
+  ],
+  "source_files": {
+    "canonical.parquet": "5ba5770152de3222293012f4f19806b490d5c56aa151e0eed3bb0b843df06af1",
+    "predictions_v2.csv": "7a96f15e56f89250d9667503130a108854256ce03b7e7f73f90405b586afff93",
+    "stage3/risk_features.parquet": "ddda557ae667a742a61cebb05bb1105059d021dc7173e2046d748d84e385af99",
+    "agent/case_library/cases.json": "03084c8fdf4af1b125dc1c0690773d31c19e492302a05cc81d3fd4fcd226cf46",
+    "agent/case_library/cases_auto.json": "a3f9a28e308a97b045d489bd41bafc2ebed2369a10c844aff1b275f0fcaa3746"
+  },
+  "row_counts": {
+    "canonical_demo": 4942,
+    "predictions_demo": 192,
+    "risk_features_demo": 192,
+    "cases_demo": 329
+  },
+  "hashes": {
+    "canonical_demo.parquet": "a6a2b87e2515ce5ca671a521acc3e915d2f28e844d50124115075054078e8893",
+    "predictions_demo.csv": "8a6a3432056b93293caff33c0fa8adbcebd6d6ce3b77d6b256edfeb80d51b209",
+    "risk_features_demo.parquet": "c0950548c866c18871eda1724a385c987ab862df3aec8d8592218fea6251e873",
+    "cases_demo.json": "c9331e5553eb4d17d2b4ede3f0b95d001df28186d8420def84e78573245eaacb"
+  },
+  "files": {
+    "canonical_demo.parquet": "Golden Cases 特征 + 实际结算切片",
+    "predictions_demo.csv": "Golden Cases 模型预测切片",
+    "risk_features_demo.parquet": "Golden Cases Risk Gate 风险特征切片",
+    "cases_demo.json": "Golden Cases 案例库切片（真实，as-of）",
+    "metadata.json": "生成信息 / 哈希 / 行数 / 诚实声明"
+  },
+  "note": "在完整数据机上运行 python build_demo_artifacts.py 生成；clean clone 可直接以 DEMO 模式启动。"
+}

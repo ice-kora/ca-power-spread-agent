@@ -12,40 +12,54 @@
   <div class="sub">MVP 数据来源说明 —— 不要让业务误以为"全是实时 CAISO API"。所有来源均为真实数据，as-of 约束由代码强制。</div>
 
   <div class="notice"><span class="tag">诚实</span>
-    <p>当前 MVP 的核心数据来自<b>公司文件</b>（已与 CAISO OASIS 对账验证）；实时 OASIS / GFS 采集处于接入状态或验证用途，<b>尚未进入生产特征</b>。GFS 预报作为 Agent Evidence 经统一 Collector 获取。</p>
+    <p><b>重要口径：</b>"对账过 OASIS" ≠ "当前全部数据实时来自 OASIS"。当前 MVP 的<b>生产特征</b>全部来自<b>公司文件</b>（其中价格文件已与 CAISO OASIS 对账验证一致）；<b>CAISO OASIS 仅用于对账 / 验证（reconciliation / validation），不是当前的主要生产数据源</b>。实时 GFS 预报作为 Agent Evidence 经统一 Collector 获取，仅作证据、不进入模型特征。</p>
   </div>
 
-  <h2>字段级来源登记</h2>
+  <h2>字段级来源登记（Current Source）</h2>
   <table>
-    <thead><tr><th>数据</th><th>当前来源</th><th>Source Type</th><th>发布 / 可用性</th><th>说明</th></tr></thead>
+    <thead><tr><th>数据</th><th>当前来源</th><th>Source Type</th><th>发布 / 可用性</th><th>说明（Honest Note）</th></tr></thead>
     <tbody>
       <tr>
-        <td><b>DA / RTPD / Return 价格</b><br><code>spread_* / da_* / rtpd_*</code></td>
-        <td>价格数据/*.xlsx（公司口径）</td>
+        <td><b>Historical DA / RTPD / Return 价格</b><br><code>spread_* / da_* / rtpd_*</code></td>
+        <td>Company Data（<code>价格数据/*.xlsx</code>）</td>
         <td>COMPANY_FILE</td>
-        <td>DA ≈ T−1 13:00 PT；RTPD T 日实时；Return 两者齐备后</td>
-        <td><b>已对账 OASIS</b>（`docs/company_vs_official_reconciliation.md`：价格匹配 1.0）。只作历史 lag / label，目标日禁入。</td>
+        <td>DA ≈ T−1 13:00 PT；RTPD 逐小时实时结算；Return 两者齐备后</td>
+        <td><b>Validated against CAISO OASIS</b>（`docs/company_vs_official_reconciliation.md`：价格匹配 1.0）。只作历史 lag / label，目标日禁入。</td>
       </tr>
       <tr>
-        <td><b>实际负荷</b><br><code>load_actual_lag1</code></td>
-        <td>load_CA_ISO_TAC_ACTUAL.csv</td>
+        <td><b>Historical Congestion / 阻塞分量</b><br><code>价格数据/*-c.xlsx</code></td>
+        <td>Company Data（-c 后缀文件）</td>
+        <td>COMPANY_FILE</td>
+        <td>同 DA/RTPD</td>
+        <td><b>Mapped to CAISO MCC</b>（阻塞价格分量，口径映射至 CAISO 官方 MCC 组件）。官方组件定义含 UNKNOWN_SOURCE_TYPE，谨慎使用；未进入决策特征。</td>
+      </tr>
+      <tr>
+        <td><b>Historical Load / 实际负荷</b><br><code>load_actual_lag1</code></td>
+        <td>Company File（<code>load_CA_ISO_TAC_ACTUAL.csv</code>）</td>
         <td>COMPANY_FILE</td>
         <td>T 日后（历史滞后，仅 lag）</td>
         <td>决策时点用 T−2 及更早，不穿越。</td>
       </tr>
       <tr>
-        <td><b>负荷预测 2DA</b><br><code>load_2da_forecast / load_peak_flag</code></td>
-        <td>load_CA_ISO_TAC_2DA.csv</td>
+        <td><b>2DA Load Forecast / 负荷预测</b><br><code>load_2da_forecast / load_peak_flag</code></td>
+        <td>Company File（<code>load_CA_ISO_TAC_2DA.csv</code>）</td>
         <td>COMPANY_FILE</td>
         <td>无 issue_time → availability_basis=ASSUMED_AVAILABLE；外部 BPM 证据约提前 2 日 18:00 PT</td>
-        <td><b>vintage 受限提示</b>：严格回测需逐日补证；UI 以上界 decision_date 00:00 PT 表达，不显示伪精确时间戳。</td>
+        <td><b>Vintage limitation（明确标注）</b>：该文件无逐日发布 / issue 时间，严格回测 vintage 受限；UI 以上界 decision_date 00:00 PT 表达，不显示伪精确时间戳。</td>
       </tr>
       <tr>
-        <td><b>天气滞后</b><br><code>t2m_lag1 / ssrd_lag1 / wind100_lag1</code></td>
-        <td>zone_weather_hourly.csv</td>
+        <td><b>Historical Weather Lag / 天气滞后</b><br><code>t2m_lag1 / ssrd_lag1 / wind100_lag1</code></td>
+        <td>Company Weather（<code>zone_weather_hourly.csv</code>）</td>
         <td>COMPANY_FILE（historical only）</td>
         <td>无 run/issue 时间 → 仅历史 lag 可用</td>
-        <td>ERA5 风格再分析 + 合成段，<b>不可作 D+1 预报</b>；默认禁用 <code>*_next</code> 类特征（防穿越）。</td>
+        <td>ERA5 风格再分析 + 合成段，<b>historical only</b>：不可作 D+1 预报；默认禁用 <code>*_next</code> 类特征（防穿越）。</td>
+      </tr>
+      <tr>
+        <td><b>GFS Evidence / 天气证据</b></td>
+        <td>Unified GFS Collector（<code>code/data_acquisition/weather_gfs.py</code> → <code>agent/evidence/gfs_forecast.py</code>）</td>
+        <td>NOAA_GFS / OPEN_METEO_GFS</td>
+        <td>06Z run 可严格回测（available_at ≤ cutoff）；12Z/18Z 无可靠 vintage → 回测不可用或 POST-DECISION</td>
+        <td>经 Evidence Time Gate 程序裁决；晚于 cutoff 的证据只进复盘。<b>仅作 Agent Evidence，不进入模型特征。</b></td>
       </tr>
       <tr>
         <td><b>同区节点联动</b><br><code>peer_*</code></td>
@@ -62,28 +76,20 @@
         <td>节点→区域映射：SNLNDRO/CONTROLX→ZP26，ELCA→SP15。</td>
       </tr>
       <tr>
-        <td><b>GFS 外部证据</b></td>
-        <td>统一 Collector：<code>code/data_acquisition/weather_gfs.py</code>（Open-Meteo NCEP GFS 单次 run 档案）</td>
-        <td>NOAA_GFS / OPEN_METEO_GFS</td>
-        <td>06Z run 可严格回测（available_at ≤ cutoff）；12Z/18Z 无可靠 vintage → 回测不可用或 POST-DECISION</td>
-        <td>经 Evidence Time Gate 程序裁决；晚于 cutoff 的证据只进复盘。<b>仅作证据，不进入模型特征。</b></td>
-      </tr>
-      <tr>
-        <td><b>阻塞分量 / Congestion</b></td>
-        <td>价格数据/*-c.xlsx（DARTPD Cong Spread，MCC 口径）</td>
-        <td>COMPANY_FILE</td>
-        <td>同 DA/RTPD</td>
-        <td>官方组件定义含 UNKNOWN_SOURCE_TYPE，谨慎使用；未进入决策特征。</td>
-      </tr>
-      <tr>
         <td><b>CAISO OASIS</b></td>
-        <td>code/data_acquisition/caiso_oasis.py（历史采集缓存）</td>
+        <td><code>code/data_acquisition/caiso_oasis.py</code>（历史采集缓存）</td>
         <td>CAISO_OASIS</td>
         <td>—</td>
-        <td><b>验证用，未进生产特征</b>。用于对账（DA/RTPD 与公司文件匹配 1.0）；详见 <code>docs/caiso_oasis_sources.md</code>。</td>
+        <td><b>Reconciliation / validation only —— 不是当前主要生产特征源</b>。用于对账（DA/RTPD 与公司文件匹配 1.0）；详见 <code>docs/caiso_oasis_sources.md</code>。</td>
       </tr>
     </tbody>
   </table>
+
+  <h2>一句话口径</h2>
+  <ul>
+    <li><b>对账过 OASIS ≠ 当前全部数据实时来自 OASIS。</b>价格 / 负荷 / 天气等生产特征均来自公司文件；OASIS 仅用于一致性验证。</li>
+    <li>当前实时接入的外部数据只有 <b>GFS 天气证据</b>（统一 Collector），且仅作 Agent Evidence、经 Evidence Time Gate 程序裁决。</li>
+  </ul>
 
   <h2>as-of 口径（P0-2 统一）</h2>
   <ul>

@@ -64,21 +64,41 @@ if str(REPO_ROOT) not in sys.path:
 
 import pandas as pd  # noqa: E402
 
+from data_mode import (  # noqa: E402
+    MODE_DEMO,
+    MODE_FULL,
+    DEMO_DIR_NAME,
+    resolve_data_mode,
+)
+
 from code.data_acquisition.schemas import (  # noqa: E402
+    AVAILABILITY_BASIS_KEY,
+    HAS_PRECISE_PUBLISH_TIME_KEY,
+    LATEST_POSSIBLE_AVAILABLE_AT_KEY,
     NODE_REGION,
+    SOURCE_TARGET_DATE_KEY,
     infer_source_type,
+    latest_available_bound,
     make_decision_cutoff,
     pt_naive_to_utc_naive,
     target_time_pt_to_utc,
+    feature_available_at_display,
+    feature_decision_eligible,
 )
 from code.risk_gate.gate import RiskGate  # noqa: E402
 from code.risk_gate.case_adapter import match_similar_tail_cases  # noqa: E402
 from code.risk_gate.evidence_adapter import evidence_direction_context  # noqa: E402
 from code.decision.rule_engine import RuleEngine  # noqa: E402
+from code.decision.audit import run_runtime_audit  # noqa: E402
 from agent.evidence.fetcher import fetch_evidence  # noqa: E402
 from agent.evidence.gfs_forecast import build_gfs_evidence  # noqa: E402
 from agent.evidence.time_gate import split_eligible  # noqa: E402
 from agent.case_library.policy import decision_time_for, is_retrievable  # noqa: E402
+
+try:  # pragma: no cover - canonical 依赖完整 artifact；缺失时 provenance 走回退
+    from code.canonical import availability_map as _availability_map
+except Exception:  # pragma: no cover
+    _availability_map = None
 
 # ---------------------------------------------------------------------------
 # 版本常量（单一事实来源：尽量复用 mvp_demo.py；失败则本地兜底副本）
@@ -260,7 +280,8 @@ _FEAT_POOL = [
 
 
 def _avail_pt(kind: str, d: str, d1: str) -> str:
-    """可用性（PT naive ISO 字符串）。"""
+    """可用性（PT naive ISO 字符串）。仅用于未在 canonical availability_map
+    登记的兜底特征；已登记特征统一走 availability_map + schemas（单一事实来源）。"""
     if kind == "D_DAM_PUB":
         return f"{d} 13:00:00"
     if kind == "D1_LOAD":
@@ -274,7 +295,14 @@ def _avail_pt(kind: str, d: str, d1: str) -> str:
 
 def _feature_provenance(feature: str, dd: str, target_date: str, hour: int,
                         cutoff_utc: Optional[str] = None) -> Dict[str, Any]:
-    """单个 canonical 特征的 provenance（as-of 工程元数据，非交易逻辑）。"""
+    """单个 canonical 特征的 provenance（as-of 工程元数据，非交易逻辑）。
+
+    P0-2 统一口径（展示 == Time Gate 判定）：已登记特征以 canonical
+    availability_map + schemas.feature_decision_eligible / latest_available_bound /
+    feature_available_at_display 为**单一事实来源**——available_at 展示的就是
+    Time Gate 判定用的同一个上界（UTC naive），绝不出现"显示 23:59 却说
+    decision_eligible"的矛盾；未登记特征保守回退（可证上界 <= cutoff 才 ELIGIBLE）。
+    """
     d = str(dd)[:10]
     d1 = (pd.Timestamp(d) - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
     base = _FEATURE_BASE.get(feature)
@@ -282,22 +310,66 @@ def _feature_provenance(feature: str, dd: str, target_date: str, hour: int,
         st = infer_source_type(feature, feature)
         base = (_FEATURE_BASE_FALLBACK[0], _FEATURE_BASE_FALLBACK[1], st, _FEATURE_BASE_FALLBACK[3])
     src, raw, stype, kind = base
+
+    meta: Dict[str, Any] = {}
+    if _availability_map is not None:
+        meta = _availability_map().get(feature) or {}
+
+    if meta:
+        basis = str(meta.get(AVAILABILITY_BASIS_KEY, "UNKNOWN"))
+        source_target_date = str(meta.get(SOURCE_TARGET_DATE_KEY, ""))
+        has_precise = bool(meta.get(HAS_PRECISE_PUBLISH_TIME_KEY, False))
+        latest_bound = latest_available_bound(meta, d) or ""
+        avail_display = feature_available_at_display(meta, d) or ""
+        eligible = bool(feature_decision_eligible(meta, d, cutoff_utc)) if cutoff_utc else True
+        return {
+            "feature": feature,
+            "source": src,
+            "raw_file": raw,
+            "source_type": stype,
+            "target_time": target_time_pt_to_utc(str(target_date)[:10], int(hour)) or "",
+            "available_at": avail_display,               # 展示 == Time Gate 判定上界
+            "available_at_display": avail_display,
+            "available_at_utc": latest_bound,
+            AVAILABILITY_BASIS_KEY: basis,
+            SOURCE_TARGET_DATE_KEY: source_target_date,
+            HAS_PRECISE_PUBLISH_TIME_KEY: has_precise,
+            LATEST_POSSIBLE_AVAILABLE_AT_KEY: latest_bound,
+            "decision_cutoff": cutoff_utc or "",
+            "is_mock": False,
+            "backtest_eligible": bool(eligible),
+            "production_eligible": bool(eligible),
+            "decision_eligible": bool(eligible),
+        }
+
+    # ---- 未登记特征：保守回退（可用上界 = PT naive → UTC naive，再与 cutoff 比较）----
     avail = _avail_pt(kind, d, d1)
-    # 显示格式：去掉秒，保留 "YYYY-MM-DD HH:MM PT"
-    display = f"{avail[:16]} PT"
+    avail_utc = pt_naive_to_utc_naive(avail) or ""
+    eligible = True
+    if cutoff_utc and avail_utc:
+        try:
+            eligible = pd.Timestamp(avail_utc) <= pd.Timestamp(cutoff_utc)
+        except Exception:
+            eligible = False
+    display = f"{avail[:16]} PT" if avail else "UNKNOWN"
     return {
         "feature": feature,
         "source": src,
         "raw_file": raw,
         "source_type": stype,
         "target_time": target_time_pt_to_utc(str(target_date)[:10], int(hour)) or "",
-        "available_at": avail,
+        "available_at": display,
         "available_at_display": display,
-        "available_at_utc": pt_naive_to_utc_naive(avail) or "",
+        "available_at_utc": avail_utc,
+        AVAILABILITY_BASIS_KEY: "UNKNOWN",
+        SOURCE_TARGET_DATE_KEY: "",
+        HAS_PRECISE_PUBLISH_TIME_KEY: False,
+        LATEST_POSSIBLE_AVAILABLE_AT_KEY: avail_utc,
+        "decision_cutoff": cutoff_utc or "",
         "is_mock": False,
-        "backtest_eligible": True,
-        "production_eligible": True,
-        "decision_eligible": True,
+        "backtest_eligible": bool(eligible),
+        "production_eligible": bool(eligible),
+        "decision_eligible": bool(eligible),
     }
 
 
@@ -524,7 +596,16 @@ class StaticEvidenceAdapter(EvidenceAdapter):
 # 证据行 / 拒绝原因（工程元数据）
 # ---------------------------------------------------------------------------
 def _ev_row(ev: Dict[str, Any]) -> Dict[str, Any]:
+    """把一条证据转成展示行（工程元数据）。
+
+    时间语义保持原始五字段：initialization_time / published_at / available_at /
+    retrieved_at / decision_cutoff。**available_at 展示 = Time Gate 真正用的那个**
+    （优先 available_at，缺失回退 published_at —— 与 Evidence.time_eligible 完全一致），
+    禁止把 available_at 直接合并成 published_at。decision_eligible 由调用方按
+    Time Gate 切分结果写入（不重算、不覆盖）。
+    """
     pub = ev.get("published_at", "")
+    avail = ev.get("available_at", "") or pub   # 展示 == Time Gate 判据
     return {
         "evidence_id": ev.get("evidence_id", ""),
         "event_type": ev.get("event_type", "OTHER"),
@@ -533,8 +614,11 @@ def _ev_row(ev: Dict[str, Any]) -> Dict[str, Any]:
         "source_type": ev.get("source_type", ""),
         "is_mock": bool(ev.get("is_mock", False)),
         "summary": ev.get("summary", ""),
+        "initialization_time": ev.get("initialization_time", "") or ev.get("model_run_time", ""),
         "published_at": pub,
-        "available_at": pub,                      # 证据的 available_at = published_at
+        "available_at": avail,                            # Time Gate 真正用的 available_at
+        "available_at_source": "available_at" if ev.get("available_at") else "published_at",
+        "retrieved_at": ev.get("retrieved_at", ""),
         "decision_cutoff": ev.get("decision_cutoff", ""),
         "decision_eligible": bool(ev.get("decision_eligible", False)),
         "directional_effect": ev.get("directional_effect", "UNCERTAIN"),
@@ -543,25 +627,108 @@ def _ev_row(ev: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _rejection_reason(row: Dict[str, Any]) -> str:
-    """被隔离证据的拒绝原因（程序计算，非交易逻辑）。"""
+    """被隔离证据的拒绝原因（程序计算，非交易逻辑）。
+
+    判据 = Time Gate 真正用的 available_at（= row 已展示的 available_at），
+    保证"显示 16:00 / cutoff 17:00"与拒绝原因绝不矛盾。
+    """
     if row.get("is_mock"):
         return "MOCK_DATA_NOT_ELIGIBLE（is_mock=True，仅测试/演示，R7 硬隔离）"
-    pub = str(row.get("published_at") or "").strip()
-    if not pub:
-        return "MISSING_PUBLISHED_AT（发布时间缺失，宁保守不穿越）"
+    avail = str(row.get("available_at") or "").strip()
+    if not avail:
+        return "MISSING_AVAILABLE_AT（可用时刻缺失，宁保守不穿越）"
     cutoff = str(row.get("decision_cutoff") or "").strip()
     try:
-        pub_ts = pd.Timestamp(pub)
+        avail_ts = pd.Timestamp(avail)
         cut_ts = pd.Timestamp(cutoff)
-        if pub_ts.tz is not None:
-            pub_ts = pub_ts.tz_localize(None)
+        if avail_ts.tz is not None:
+            avail_ts = avail_ts.tz_localize(None)
         if cut_ts.tz is not None:
             cut_ts = cut_ts.tz_localize(None)
     except Exception:
         return "UNPARSEABLE_TIME（时间不可解析）"
-    if pub_ts > cut_ts:
-        return "POST_DECISION_EVIDENCE（published_at 晚于 decision_cutoff）"
+    if avail_ts > cut_ts:
+        return ("AVAILABLE_AFTER_CUTOFF（POST_DECISION_EVIDENCE："
+                "available_at 晚于 decision_cutoff，只进复盘）")
     return "NOT_DECISION_ELIGIBLE"
+
+
+# ---------------------------------------------------------------------------
+# DecisionSnapshot（统一决策快照：CLI / Web / LLM Tool 全部消费它，禁止各自算）
+# ---------------------------------------------------------------------------
+@dataclass
+class DecisionSnapshot:
+    """一次决策的统一结构化快照。
+
+    canonical 字段（单一事实来源，run_decision 只算一次）：
+      context / features / prediction / evidences / cases / risk_gate /
+      rule_engine / final_recommendation / reason_codes / audit / locked /
+      outcome_revealed / outcome / post_trade_review / post_inputs(内部)。
+
+    to_dict() 额外输出**兼容别名**（top_features/model_output/evidence/top_cases/
+    post_trade/_post_inputs），指向同一数据（非重算），供既有 Web/测试平滑消费。
+    """
+
+    decision_id: str = ""
+    context: Dict[str, Any] = field(default_factory=dict)
+    features: List[Dict[str, Any]] = field(default_factory=list)
+    prediction: Dict[str, Any] = field(default_factory=dict)
+    evidences: Dict[str, Any] = field(default_factory=dict)
+    cases: List[Dict[str, Any]] = field(default_factory=list)
+    risk_gate: Dict[str, Any] = field(default_factory=dict)
+    rule_engine: Dict[str, Any] = field(default_factory=dict)
+    final_recommendation: str = "NO_TRADE"
+    reason_codes: List[str] = field(default_factory=list)
+    audit: Dict[str, Any] = field(default_factory=dict)
+    locked: bool = False
+    outcome_revealed: bool = False
+    outcome: Optional[Dict[str, Any]] = None          # actual_*（仅 reveal 后）
+    post_trade_review: Optional[Dict[str, Any]] = None
+    post_inputs: Dict[str, Any] = field(default_factory=dict, repr=False)  # 内部，无 actual_*
+
+    # ------------------------------------------------------------------
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "decision_id": self.decision_id,
+            "context": self.context,
+            "features": self.features,
+            "prediction": self.prediction,
+            "evidences": self.evidences,
+            "cases": self.cases,
+            "risk_gate": self.risk_gate,
+            "rule_engine": self.rule_engine,
+            "final_recommendation": self.final_recommendation,
+            "reason_codes": list(self.reason_codes),
+            "audit": self.audit,
+            "locked": bool(self.locked),
+            "outcome_revealed": bool(self.outcome_revealed),
+            "outcome": self.outcome,
+            "post_trade_review": self.post_trade_review,
+            # ---- 兼容别名（同一数据；供既有 Web / 测试继续消费）----
+            "top_features": self.features,
+            "model_output": self.prediction,
+            "evidence": self.evidences,
+            "top_cases": self.cases,
+            "post_trade": self._post_trade(),
+            "_post_inputs": self.post_inputs,
+        }
+
+    def _post_trade(self) -> Dict[str, Any]:
+        """兼容旧 post_trade 段：未 reveal 返回 OUTCOME_NOT_REVEALED，reveal 后合并 outcome+review。"""
+        if not self.outcome_revealed:
+            return {
+                "status": OUTCOME_NOT_REVEALED,
+                "message": "actual_* 未揭晓：调用 run_decision(..., reveal=True) 或 "
+                           "lock_decision() 后 reveal_decision(decision_id) 才可复盘。",
+            }
+        d = dict(self.outcome or {})
+        d["status"] = "REVEALED"
+        d["decision"] = self.final_recommendation
+        d["review"] = dict(self.post_trade_review or {})
+        return d
+
+    def as_jsonable(self) -> Dict[str, Any]:
+        return _json_safe(self.to_dict())
 
 
 # ---------------------------------------------------------------------------
@@ -578,9 +745,22 @@ class DecisionService:
         mode: str = "BACKTEST",
         verbose: bool = False,
     ):
-        self.data_dir = Path(data_dir) if data_dir is not None else Path(REPO_ROOT) / "code" / "data"
+        self.data_dir = Path(data_dir) if data_dir is not None else resolve_data_mode().data_dir
         self.mode = mode
         self.verbose = verbose
+        # ---- 数据模式（FULL / DEMO）与文件路径解析（单一来源 data_mode.py）----
+        if (self.data_dir / "canonical_demo.parquet").exists():
+            self.data_mode = MODE_DEMO
+            self._canon_path = self.data_dir / "canonical_demo.parquet"
+            self._pred_path = self.data_dir / "predictions_demo.csv"
+            self._risk_path = self.data_dir / "risk_features_demo.parquet"
+            self._cases_demo_path = self.data_dir / "cases_demo.json"
+        else:
+            self.data_mode = MODE_FULL
+            self._canon_path = self.data_dir / "canonical.parquet"
+            self._pred_path = self.data_dir / "predictions_v2.csv"
+            self._risk_path = self.data_dir / "stage3" / "risk_features.parquet"
+            self._cases_demo_path = None
         self.canon = self._load_canon()
         self.pred = self._load_pred()
         self.risk = self._load_risk()
@@ -597,23 +777,29 @@ class DecisionService:
 
     # ------------------------------------------------------------- 数据装载
     def _load_canon(self) -> pd.DataFrame:
-        df = pd.read_parquet(self.data_dir / "canonical.parquet")
+        df = pd.read_parquet(self._canon_path)
         for c in ("target_date", "decision_date"):
             if c in df.columns:
                 df[c] = pd.to_datetime(df[c]).dt.normalize()
         return df
 
     def _load_pred(self) -> pd.DataFrame:
-        df = pd.read_csv(self.data_dir / "predictions_v2.csv")
+        df = pd.read_csv(self._pred_path)
         df["target_date"] = pd.to_datetime(df["target_date"]).dt.normalize()
         return df
 
     def _load_risk(self) -> pd.DataFrame:
-        df = pd.read_parquet(self.data_dir / "stage3" / "risk_features.parquet")
+        df = pd.read_parquet(self._risk_path)
         df["target_date"] = pd.to_datetime(df["target_date"]).dt.normalize()
         return df
 
     def _load_cases(self) -> List[Dict[str, Any]]:
+        """案例库：DEMO 模式用 demo_artifacts/cases_demo.json（真实切片）；否则用 agent/case_library。"""
+        if self._cases_demo_path is not None and self._cases_demo_path.exists():
+            with open(self._cases_demo_path, encoding="utf-8") as f:
+                data = json.load(f)
+            cases = data.get("cases", data) if isinstance(data, dict) else data
+            return list(cases)
         out: List[Dict[str, Any]] = []
         for name in ("cases.json", "cases_auto.json"):
             p = Path(REPO_ROOT) / "agent" / "case_library" / name
@@ -732,6 +918,8 @@ class DecisionService:
                     risk_fields[k] = _f2(rr[k])
             verdict, decision = self._run_gate_and_rule(
                 model_out, risk_fields, ev_ctx, tail_loss, cutoff_utc,
+                features_used=top_features,
+                eligible_evidence=list(evidence.eligible),
             )
             risk_gate_out = verdict.to_dict()
             rule_out = decision.to_dict()
@@ -758,12 +946,19 @@ class DecisionService:
         if reveal:
             post_trade = self._compute_post_trade(cr_dict, post_inputs, post_evidence_present)
             outcome_revealed = post_trade.get("status") == "REVEALED"
+            outcome = {k: post_trade.get(k) for k in
+                       ("actual_da", "actual_rtpd", "actual_return", "pnl",
+                        "model_prediction_error", "direction_correct")}
+            post_trade_review = post_trade.get("review")
         else:
             post_trade = {"status": OUTCOME_NOT_REVEALED,
-                          "message": "actual_* 未揭晓：调用 run_decision(..., reveal=True) 或 reveal_decision(decision_id) 后才可复盘。"}
+                          "message": "actual_* 未揭晓：调用 run_decision(..., reveal=True) 或 "
+                                     "lock_decision() 后 reveal_decision(decision_id) 才可复盘。"}
             outcome_revealed = False
+            outcome = None
+            post_trade_review = None
 
-        # ---- 组装决策对象 ----
+        # ---- 组装统一决策快照（DecisionSnapshot）----
         context = {
             "decision_date": dd,
             "target_date": target_date,
@@ -775,49 +970,68 @@ class DecisionService:
             "market_rule_version": MARKET_RULE_VERSION,
             "as_of_banner": "AVAILABLE INFORMATION ONLY AS OF 10:00 PT",
         }
-        n_eligible = len(evidence.eligible)
-        n_post = len(evidence.post_decision)
-        audit = {
-            "data_leakage_check": "PASS",
-            "mock_data_used": "NONE",
-            "backtest_safe_features": f"{len(top_features)}/{len(self.feature_cols)}",
-            "evidence_time_gate": f"{n_eligible} eligible / {n_post} post",
-            "decision_cutoff_pt": f"{dd} 10:00 PT",
-            "decision_cutoff_utc": cutoff_utc,
-            "meta": {
-                "generator": "code/decision_service.py",
-                "market_rule_version": MARKET_RULE_VERSION,
-                "model_version": MODEL_VERSION,
-                "rule_engine_version": RULE_ENGINE_VERSION,
-                "risk_gate_version": RISK_GATE_VERSION,
-                "evidence_time_gate_version": EVIDENCE_TIME_GATE_VERSION,
-                "case_library_version": CASE_LIBRARY_VERSION,
-                "schema_version": SCHEMA_VERSION,
-                "honest_labels": [
-                    "MODEL SIGNAL IS EXPERIMENTAL / CURRENT ALPHA = WEAK",
-                    "MVP ≠ 已验证盈利系统",
-                    "决策路径无 MOCK；所有数据真实且 as-of",
-                ],
-            },
-        }
+        evidence_section = self._evidence_section(evidence.eligible, evidence.post_decision, gate_note)
 
-        decision_obj: Dict[str, Any] = {
-            "decision_id": "",
-            "context": context,
-            "top_features": top_features,
-            "model_output": model_out,
-            "evidence": self._evidence_section(evidence.eligible, evidence.post_decision, gate_note),
-            "top_cases": similar,
-            "risk_gate": risk_gate_out,
-            "rule_engine": rule_out,
-            "final_recommendation": final,
-            "reason_codes": reason_codes,
-            "post_trade": post_trade,
-            "outcome_revealed": bool(outcome_revealed),
-            "audit": audit,
-            "_post_inputs": post_inputs,   # 工程内部（决策时点信息，无 actual_*），工具输出会剔除
+        snapshot = DecisionSnapshot(
+            context=context,
+            features=top_features,
+            prediction=model_out,
+            evidences=evidence_section,
+            cases=similar,
+            risk_gate=risk_gate_out,
+            rule_engine=rule_out,
+            final_recommendation=final,
+            reason_codes=reason_codes,
+            locked=False,
+            outcome_revealed=outcome_revealed,
+            outcome=outcome,
+            post_trade_review=post_trade_review,
+            post_inputs=post_inputs,
+        )
+        snapshot_obj = snapshot.to_dict()
+
+        # ---- 运行时审计（真实运行检查；OVERALL 由结果计算，不硬编码）----
+        audit = run_runtime_audit(
+            features=top_features,
+            evidence_section=evidence_section,
+            cases=similar,
+            decision_time=decision_time_for(target_date),
+            decision_cutoff=cutoff_utc,
+            decision_obj=snapshot_obj,
+            outcome_revealed=bool(outcome_revealed),
+            rule_engine_out=rule_out,
+        )
+        audit["decision_cutoff_pt"] = f"{dd} 10:00 PT"
+        audit["decision_cutoff_utc"] = cutoff_utc
+        # ---- 兼容旧 audit 键（由真实检查结果派生，不写死）----
+        audit["data_leakage_check"] = audit["overall"]                    # 5 项 OVERALL 的真实结论
+        audit["mock_data_used"] = "NONE" if audit["checks"]["mock_data"]["status"] == "PASS" else "FOUND"
+        audit["evidence_time_gate"] = (f"{len(evidence.eligible)} eligible / "
+                                       f"{len(evidence.post_decision)} post")
+        audit["backtest_safe_features"] = f"{len(top_features)}/{len(self.feature_cols)}"
+        audit["meta"] = {
+            "generator": "code/decision_service.py",
+            "data_mode": self.data_mode,
+            "data_mode_note": (
+                "DEMO：真实历史最小切片（非 MOCK，可真实推荐）；actual_* 仅 Reveal 后经 service/tool 可访问"
+                if self.data_mode == MODE_DEMO
+                else "FULL：完整数据"
+            ),
+            "market_rule_version": MARKET_RULE_VERSION,
+            "model_version": MODEL_VERSION,
+            "rule_engine_version": RULE_ENGINE_VERSION,
+            "risk_gate_version": RISK_GATE_VERSION,
+            "evidence_time_gate_version": EVIDENCE_TIME_GATE_VERSION,
+            "case_library_version": CASE_LIBRARY_VERSION,
+            "schema_version": SCHEMA_VERSION,
+            "honest_labels": [
+                "MODEL SIGNAL IS EXPERIMENTAL / CURRENT ALPHA = WEAK",
+                "MVP ≠ 已验证盈利系统",
+                "决策路径无 MOCK；所有数据真实且 as-of",
+            ],
         }
-        decision_obj = _json_safe(decision_obj)
+        snapshot.audit = audit
+        decision_obj = snapshot.as_jsonable()
         decision_id = self._make_decision_id(dd, node, hour)
         decision_obj["decision_id"] = decision_id
         self._decisions[decision_id] = decision_obj
@@ -879,7 +1093,9 @@ class DecisionService:
 
     def _run_gate_and_rule(self, pred: Dict[str, Any], risk_fields: Dict[str, Any],
                            ev_ctx: Dict[str, Any], tail_loss: List[Dict[str, Any]],
-                           cutoff_utc: str):
+                           cutoff_utc: str,
+                           features_used: Optional[Sequence[Dict[str, Any]]] = None,
+                           eligible_evidence: Optional[Sequence[Dict[str, Any]]] = None):
         candidate = {
             "node": pred["node"],
             "target_date": pred["target_date"],
@@ -899,6 +1115,9 @@ class DecisionService:
         gate = RiskGate()
         verdict = gate.evaluate(candidate, verbose=False)
         engine = RuleEngine()
+        # 运行时审计真正喂给 Rule Engine：features_used（Feature Time Gate 校验结果）
+        # 与 evidences（Time Gate 放行的 eligible 证据）。RuleEngine 内部再做一次
+        # P0-2 一致性校验 + evidence 过滤，不一致直接抛错（防展示/判定漂移）。
         decision = engine.evaluate(
             {
                 "node": pred["node"],
@@ -911,8 +1130,9 @@ class DecisionService:
                 "prob_negative": pred["prob_negative"],
             },
             gate_verdict=verdict,
-            evidences=[],           # 决策层证据已由 Service 经 Time Gate 过滤；全 UNCERTAIN 无方向信号
+            evidences=list(eligible_evidence or []),   # Time Gate 放行的 eligible 证据
             decision_cutoff=cutoff_utc,
+            features_used=list(features_used or []),   # 特征展示 == Time Gate 判定口径
         )
         return verdict, decision
 
@@ -968,11 +1188,34 @@ class DecisionService:
         return {"status": "NOT_FOUND", "tool": tool, "decision_id": decision_id,
                 "message": f"decision_id 不存在: {decision_id!r}（先用 run_decision / get_decision 生成）"}
 
+    def lock_decision(self, decision_id: str) -> Dict[str, Any]:
+        """锁定决策（Outcome Access Control 的 Service 层前置门槛）。
+
+        Lock 前任何 actual_* 都不可见：get_post_trade_review 返回
+        OUTCOME_NOT_REVEALED，reveal_decision 返回 NOT_LOCKED。
+        """
+        dec = self._require(decision_id)
+        if not dec.get("locked"):
+            dec["locked"] = True
+            self._save_store()
+        return {"status": "LOCKED", "decision_id": decision_id, "locked": True}
+
     def reveal_decision(self, decision_id: str) -> Dict[str, Any]:
-        """对已锁定的决策做 Post-trade 揭晓（工程能力；actual_* 只在此出现）。"""
+        """对**已锁定**的决策做 Post-trade 揭晓（Service 层强制 Lock 前置）。
+
+        actual_* 只在 Lock 后、经本方法显式揭晓才出现；Lock 前调用返回
+        NOT_LOCKED（不穿越）。揭晓后更新统一快照的 outcome / post_trade_review /
+        outcome_revealed 及兼容字段 post_trade。
+        """
         dec = self._require(decision_id)
         if dec.get("outcome_revealed"):
-            return dec["post_trade"]
+            return dec.get("post_trade", {})
+        if not dec.get("locked"):
+            return {
+                "status": "NOT_LOCKED",
+                "decision_id": decision_id,
+                "message": "必须先 lock_decision(decision_id) 才能 reveal（Lock 前禁止显示实际结果）。",
+            }
         ctx = dec["context"]
         dd = str(ctx["decision_date"])[:10]
         node = ctx["node"]
@@ -984,10 +1227,20 @@ class DecisionService:
         if canon_row.empty:
             return {"status": "ACTUALS_UNAVAILABLE", "note": "canonical 无该行，无法复盘。"}
         cr_dict = _json_safe(canon_row.iloc[0].to_dict())
-        post_evidence_present = len(dec.get("evidence", {}).get("post_decision", [])) > 0
-        post_trade = self._compute_post_trade(cr_dict, dec.get("_post_inputs", {}), post_evidence_present)
+        post_evidence_present = len(dec.get("evidences", dec.get("evidence", {})).get("post_decision", [])) > 0
+        post_inputs = dec.get("_post_inputs", {})
+        post_trade = self._compute_post_trade(cr_dict, post_inputs, post_evidence_present)
+        revealed = post_trade.get("status") == "REVEALED"
         dec["post_trade"] = post_trade
-        dec["outcome_revealed"] = post_trade.get("status") == "REVEALED"
+        dec["outcome_revealed"] = bool(revealed)
+        if revealed:
+            dec["outcome"] = {k: post_trade.get(k) for k in
+                              ("actual_da", "actual_rtpd", "actual_return", "pnl",
+                               "model_prediction_error", "direction_correct")}
+            dec["post_trade_review"] = post_trade.get("review")
+        else:
+            dec["outcome"] = None
+            dec["post_trade_review"] = None
         self._save_store()
         return dec["post_trade"]
 
@@ -1001,14 +1254,17 @@ class DecisionService:
         if decision_id is None:
             decision_id = self.run_decision(dd, node, hour, reveal=False)["decision_id"]
         dec = self._decisions[decision_id]
+        prediction = dec.get("prediction", dec.get("model_output"))
+        rule_engine = dict(dec.get("rule_engine", {}))
+        rule_engine.pop("features_used", None)   # 工具输出保持紧凑；完整 features_used 在 snapshot 与 get_feature_explanation
         return {
             "status": "ok",
             "tool": "get_decision",
             "decision_id": decision_id,
             "context": dec["context"],
-            "model_output": dec["model_output"],
+            "model_output": prediction,           # 兼容旧 schema；内容 = snapshot.prediction
             "risk_gate": dec["risk_gate"],
-            "rule_engine": dec["rule_engine"],
+            "rule_engine": rule_engine,
             "final_recommendation": dec["final_recommendation"],
             "reason_codes": dec["reason_codes"],
         }
@@ -1031,7 +1287,7 @@ class DecisionService:
             "available_at_display": f.get("available_at_display"),
             "availability": f.get("availability", "ELIGIBLE"),
             "decision_eligible": bool(f.get("decision_eligible", True)),
-        } for f in dec.get("top_features", [])]
+        } for f in dec.get("features", dec.get("top_features", []))]
         return {
             "status": "ok",
             "tool": "get_feature_explanation",
@@ -1047,7 +1303,7 @@ class DecisionService:
             dec = self._require(decision_id)
         except KeyError:
             return self._not_found("get_evidence", decision_id)
-        ev = dec.get("evidence", {})
+        ev = dec.get("evidences", dec.get("evidence", {}))
         return {
             "status": "ok",
             "tool": "get_evidence",
@@ -1067,7 +1323,7 @@ class DecisionService:
         target_date = str(ctx.get("target_date", ""))[:10]
         decision_time = decision_time_for(target_date) if target_date else ""
         rows = []
-        for c in dec.get("top_cases", [])[:3]:
+        for c in dec.get("cases", dec.get("top_cases", []))[:3]:
             lesson = ""
             lessons = c.get("lessons") or []
             if lessons:
@@ -1103,7 +1359,7 @@ class DecisionService:
         except KeyError:
             return self._not_found("get_data_provenance", decision_id)
         ctx = dec["context"]
-        features = dec.get("top_features", [])
+        features = dec.get("features", dec.get("top_features", []))
         if feature_name is not None:
             hit = next((f for f in features if f["feature"] == feature_name), None)
             if hit is None:
@@ -1118,7 +1374,11 @@ class DecisionService:
                 "provenance": provs, "n": len(provs)}
 
     def get_post_trade_review(self, decision_id: str) -> Dict[str, Any]:
-        """Tool 6：Post-trade 复盘；仅当 outcome_revealed=True 可调用，否则 OUTCOME_NOT_REVEALED。"""
+        """Tool 6：Post-trade 复盘；仅当 outcome_revealed=True 可调用，否则拒绝。
+
+        Outcome Access Control（Service 层）：未 reveal（Lock 前 / Lock 后 Reveal
+        前）一律返回 OUTCOME_NOT_REVEALED，绝不输出 actual_*；Reveal 后才 REVEALED。
+        """
         try:
             dec = self._require(decision_id)
         except KeyError:
@@ -1128,21 +1388,22 @@ class DecisionService:
                 "status": OUTCOME_NOT_REVEALED,
                 "tool": "get_post_trade_review",
                 "decision_id": decision_id,
-                "message": "actual_* 未揭晓：需 run_decision(..., reveal=True) 或 reveal_decision(decision_id) 后才可复盘。",
+                "message": "actual_* 未揭晓：需 run_decision(..., reveal=True) 或 "
+                           "lock_decision() 后 reveal_decision(decision_id) 才可复盘。",
             }
-        pt = dec.get("post_trade", {})
-        review = pt.get("review", {}) or {}
+        outcome = dec.get("outcome") or {}
+        review = dec.get("post_trade_review") or {}
         return {
             "status": "REVEALED",
             "tool": "get_post_trade_review",
             "decision_id": decision_id,
-            "decision": pt.get("decision"),
-            "actual_da": pt.get("actual_da"),
-            "actual_rtpd": pt.get("actual_rtpd"),
-            "actual_return": pt.get("actual_return"),
-            "pnl": pt.get("pnl"),
-            "model_prediction_error": pt.get("model_prediction_error"),
-            "direction_correct": pt.get("direction_correct"),
+            "decision": dec.get("final_recommendation"),
+            "actual_da": outcome.get("actual_da"),
+            "actual_rtpd": outcome.get("actual_rtpd"),
+            "actual_return": outcome.get("actual_return"),
+            "pnl": outcome.get("pnl"),
+            "model_prediction_error": outcome.get("model_prediction_error"),
+            "direction_correct": outcome.get("direction_correct"),
             "review_category": list(review.get("primary", [])),
             "lessons": list(review.get("notes", [])),
             "review": review,
@@ -1173,6 +1434,7 @@ class DecisionService:
                 "decision_id": k,
                 "context": v.get("context", {}),
                 "final_recommendation": v.get("final_recommendation"),
+                "locked": bool(v.get("locked", False)),
                 "outcome_revealed": bool(v.get("outcome_revealed", False)),
             })
         return out
@@ -1220,6 +1482,14 @@ def get_data_provenance(decision_id: str, feature_name: Optional[str] = None,
 
 def get_post_trade_review(decision_id: str, service: Optional[DecisionService] = None) -> Dict[str, Any]:
     return (service or default_service()).get_post_trade_review(decision_id)
+
+
+def lock_decision(decision_id: str, service: Optional[DecisionService] = None) -> Dict[str, Any]:
+    return (service or default_service()).lock_decision(decision_id)
+
+
+def reveal_decision(decision_id: str, service: Optional[DecisionService] = None) -> Dict[str, Any]:
+    return (service or default_service()).reveal_decision(decision_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1328,7 +1598,7 @@ TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
 
 
 # ---------------------------------------------------------------------------
-# 自检演示
+# 自检演示（CLI：消费统一 DecisionSnapshot，展示 canonical 字段 + 运行时审计）
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     try:
@@ -1338,8 +1608,24 @@ if __name__ == "__main__":
         raise
     dd, node, hour = "2026-07-08", "CONTROLX_1_N001", 2
     dec = svc.run_decision(dd, node, hour, reveal=True)
-    print(json.dumps({"decision_id": dec["decision_id"], "final": dec["final_recommendation"],
-                      "reason_codes": dec["reason_codes"], "outcome_revealed": dec["outcome_revealed"]},
-                     ensure_ascii=False, indent=2))
+    print(json.dumps({
+        "decision_id": dec["decision_id"],
+        "context": dec["context"],
+        "prediction": dec["prediction"],
+        "final_recommendation": dec["final_recommendation"],
+        "reason_codes": dec["reason_codes"],
+        "audit": dec["audit"],
+        "locked": dec["locked"],
+        "outcome_revealed": dec["outcome_revealed"],
+        "outcome": dec["outcome"],
+        "post_trade_review": dec["post_trade_review"],
+    }, ensure_ascii=False, indent=2, default=str))
     print("tools: get_decision ->",
           json.dumps(svc.get_decision(dd, node, hour)["final_recommendation"], ensure_ascii=False))
+    # Outcome Access Control 演示：Lock 前 reveal 被拒
+    did2 = svc.run_decision(dd, node, hour, reveal=False)["decision_id"]
+    before = svc.reveal_decision(did2)
+    print("reveal before lock ->", json.dumps(before, ensure_ascii=False))
+    svc.lock_decision(did2)
+    after = svc.reveal_decision(did2)
+    print("reveal after lock  ->", after.get("status"))

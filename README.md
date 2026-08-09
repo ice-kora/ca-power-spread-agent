@@ -43,6 +43,14 @@ python mvp_web.py --offline
 > 若 `pip install -r requirements.txt` 后无法启动，先跑 `python prepare_mvp.py`，它会逐项检查 artifact 与关键依赖，缺失时给出具体重建命令。
 > 依赖清单见 `requirements.txt`；LLM 官方 SDK（openai/anthropic）为可选 —— 不装时 Ask Agent 走 httpx/requests 直连或诚实降级。
 
+**数据模式（FULL / DEMO）**：`prepare_mvp.py` 自动探测——
+- **FULL**：完整数据 artifacts 存在（`code/data/*`）。
+- **DEMO**：完整数据缺失（clean clone），但 `demo_artifacts/` 存在（真实历史最小切片，只覆盖 5 个
+  Golden Cases）。DEMO **≠ MOCK**：DEMO 是真实历史记录的子集，可给出真实推荐；MOCK 永不参与真实推荐。
+- 环境变量可覆盖：`MVP_DATA_MODE=demo|full`（旧别名 `DATA_MODE` 兼容）。
+- 在完整数据机上运行 `python build_demo_artifacts.py --check` 可重新生成切片并校验
+  FULL vs DEMO 一致性（`docs/v0311_consistency.md`，5/5 PASS）。
+
 ## 3. Demo 怎么操作
 
 首页是 **Decision Workspace**（交易决策工作台），完整闭环 6 步：

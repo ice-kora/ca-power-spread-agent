@@ -53,25 +53,34 @@ except Exception:
 
 import pandas as pd
 
-from code.data_acquisition.schemas import NODE_REGION, make_decision_cutoff
-from code.risk_gate.gate import RiskGate
-from code.risk_gate.case_adapter import match_similar_tail_cases
-from code.risk_gate.evidence_adapter import evidence_direction_context
-from code.decision.rule_engine import RuleEngine
-from agent.evidence.fetcher import fetch_evidence
-from agent.evidence.gfs_forecast import build_gfs_evidence
-from agent.evidence.time_gate import split_eligible
-from agent.case_library.policy import decision_time_for, is_retrievable
+from data_mode import MODE_DEMO, MODE_FULL, resolve_data_mode  # noqa: E402
+from code.data_acquisition.schemas import NODE_REGION, make_decision_cutoff  # noqa: E402
+from code.risk_gate.gate import RiskGate  # noqa: E402
+from code.risk_gate.case_adapter import match_similar_tail_cases  # noqa: E402
+from code.risk_gate.evidence_adapter import evidence_direction_context  # noqa: E402
+from code.decision.rule_engine import RuleEngine  # noqa: E402
+from agent.evidence.fetcher import fetch_evidence  # noqa: E402
+from agent.evidence.gfs_forecast import build_gfs_evidence  # noqa: E402
+from agent.evidence.time_gate import split_eligible  # noqa: E402
+from agent.case_library.policy import decision_time_for, is_retrievable  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # 路径与版本常量
 # ---------------------------------------------------------------------------
-DATA_DIR = Path(REPO_ROOT) / "code" / "data"
-CANON_PQ = DATA_DIR / "canonical.parquet"
-PRED_V2 = DATA_DIR / "predictions_v2.csv"
-RISK_FEATURES = DATA_DIR / "stage3" / "risk_features.parquet"
-CASES_MANUAL = Path(REPO_ROOT) / "agent" / "case_library" / "cases.json"
-CASES_AUTO = Path(REPO_ROOT) / "agent" / "case_library" / "cases_auto.json"
+# 数据模式（FULL / DEMO）由 data_mode.py 自动探测；MVP_DATA_MODE / DATA_MODE 可覆盖。
+# DEMO ≠ MOCK：DEMO 是真实历史最小切片，可真实推荐；MOCK 永不参与真实推荐。
+_DM = resolve_data_mode()
+DATA_MODE = _DM.mode
+DATA_DIR = _DM.data_dir
+CANON_PQ = _DM.canon_path
+PRED_V2 = _DM.pred_path
+RISK_FEATURES = _DM.risk_path
+if _DM.cases_path is not None:
+    CASES_MANUAL = _DM.cases_path       # demo_artifacts/cases_demo.json（真实切片）
+    CASES_AUTO = None
+else:
+    CASES_MANUAL = Path(REPO_ROOT) / "agent" / "case_library" / "cases.json"
+    CASES_AUTO = Path(REPO_ROOT) / "agent" / "case_library" / "cases_auto.json"
 
 #: 版本（单一事实来源；上游 schemas.py 接入 market_rule_version 后由该字段接管）
 MARKET_RULE_VERSION = "CAISO-DAM/BPM-demo-0.2（DAM bid cutoff = 10:00 PT）"
@@ -112,10 +121,10 @@ def load_risk() -> pd.DataFrame:
 
 
 def load_cases() -> List[Dict[str, Any]]:
-    """合并 manual + auto 案例（均带 case_available_at，as-of 硬约束）。"""
+    """合并 manual + auto 案例（均带 case_available_at，as-of 硬约束）。DEMO 模式只用 cases_demo.json。"""
     out: List[Dict[str, Any]] = []
     for path in (CASES_MANUAL, CASES_AUTO):
-        if not path.exists():
+        if path is None or not path.exists():
             continue
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
@@ -716,6 +725,8 @@ def main() -> None:
     print("  CAISO 价差交易 · 可解释决策 MVP Demo（Agent D）")
     print("  系统：Model → Evidence → Time Gate → Case → Risk Gate → Rule Engine → Review")
     print(f"  ⚠ MODEL SIGNAL IS EXPERIMENTAL / CURRENT ALPHA = {ALPHA_LABEL} / MVP ≠ 已验证盈利系统")
+    print(f"  DATA MODE = {DATA_MODE}"
+          + ("（DEMO：真实历史最小切片，非 MOCK，可真实推荐）" if DATA_MODE == MODE_DEMO else "（FULL：完整数据）"))
     print("#" * 92)
     print()
 
@@ -945,11 +956,20 @@ def main() -> None:
     print(f"  Time Gate Version    : {EVIDENCE_TIME_GATE_VERSION}")
     print(f"  Case Library Version : {CASE_LIBRARY_VERSION}")
     print(f"  As-of Schema Version : {SCHEMA_VERSION}")
+    print(f"  Data Mode            : {DATA_MODE}"
+          + ("（DEMO：真实历史最小切片，非 MOCK；outcome 仅 Reveal 后经 service/tool 可访问）"
+             if DATA_MODE == MODE_DEMO else "（FULL：完整数据）"))
 
     # ================= 审计 JSON =================
     audit = {
         "meta": {
             "generator": "mvp_demo.py",
+            "data_mode": DATA_MODE,
+            "data_mode_note": (
+                "DEMO：真实历史最小切片（非 MOCK，可真实推荐）；actual_* 仅 Reveal 后经 service/tool 可访问"
+                if DATA_MODE == MODE_DEMO
+                else "FULL：完整数据"
+            ),
             "market_rule_version": MARKET_RULE_VERSION,
             "model_version": MODEL_VERSION,
             "rule_engine_version": RULE_ENGINE_VERSION,

@@ -1,0 +1,94 @@
+{
+  "schema_version": "1.0",
+  "data_mode": "DEMO",
+  "description": "真实历史数据的最小切片，只覆盖 5 个 Golden Cases 决策所需行 + 特征前置窗口。不造数据、不改 PnL/prediction/decision。",
+  "generated_by": "build_demo_artifacts.py",
+  "generated_at": "2026-08-09T08:25:09Z",
+  "source_commit": "78f4e274275210d05fb100483357e6fc9cff2472",
+  "golden_cases": [
+    {
+      "id": "B",
+      "label": "B · SELL 盈利（彩票右尾）",
+      "decision_date": "2026-07-16",
+      "target_date": "2026-07-17",
+      "node": "CONTROLX_1_N001",
+      "hour": 3
+    },
+    {
+      "id": "C1",
+      "label": "C1 · NO_TRADE 避险（RiskGate 成功）",
+      "decision_date": "2026-07-08",
+      "target_date": "2026-07-09",
+      "node": "CONTROLX_1_N001",
+      "hour": 2
+    },
+    {
+      "id": "C2",
+      "label": "C2 · NO_TRADE 弱信号",
+      "decision_date": "2026-07-10",
+      "target_date": "2026-07-11",
+      "node": "SNLNDRO_1_N001",
+      "hour": 10
+    },
+    {
+      "id": "D",
+      "label": "D · 模型 SELL 但错（诚实展示）",
+      "decision_date": "2026-07-20",
+      "target_date": "2026-07-21",
+      "node": "SNLNDRO_1_N001",
+      "hour": 20
+    },
+    {
+      "id": "E",
+      "label": "E · Evidence 被 Time Gate 拒（同 C1 参数）",
+      "decision_date": "2026-07-08",
+      "target_date": "2026-07-09",
+      "node": "CONTROLX_1_N001",
+      "hour": 2
+    }
+  ],
+  "data_window": {
+    "canon_start": "2026-04-10",
+    "canon_end": "2026-07-21",
+    "history_pre_days": 90
+  },
+  "nodes": [
+    "CONTROLX_1_N001",
+    "SNLNDRO_1_N001"
+  ],
+  "target_dates": [
+    "2026-07-09",
+    "2026-07-11",
+    "2026-07-17",
+    "2026-07-21"
+  ],
+  "contains_mock": false,
+  "contains_future_outcome": true,
+  "future_outcome_note": "actual_da / actual_rtpd / actual_return / pnl 为事后结算值；仅在决策 LOCK 之后经 Reveal（Post-trade / Tool 6 get_post_trade_review）可访问，绝不回灌决策（Evidence Time Gate / as-of 硬约束）。",
+  "source_files": {
+    "canonical.parquet": "5ba5770152de3222293012f4f19806b490d5c56aa151e0eed3bb0b843df06af1",
+    "predictions_v2.csv": "7a96f15e56f89250d9667503130a108854256ce03b7e7f73f90405b586afff93",
+    "stage3/risk_features.parquet": "ddda557ae667a742a61cebb05bb1105059d021dc7173e2046d748d84e385af99",
+    "agent/case_library/cases.json": "03084c8fdf4af1b125dc1c0690773d31c19e492302a05cc81d3fd4fcd226cf46",
+    "agent/case_library/cases_auto.json": "a3f9a28e308a97b045d489bd41bafc2ebed2369a10c844aff1b275f0fcaa3746"
+  },
+  "output_files": {
+    "canonical_demo.parquet": "a6a2b87e2515ce5ca671a521acc3e915d2f28e844d50124115075054078e8893",
+    "predictions_demo.csv": "8a6a3432056b93293caff33c0fa8adbcebd6d6ce3b77d6b256edfeb80d51b209",
+    "risk_features_demo.parquet": "c0950548c866c18871eda1724a385c987ab862df3aec8d8592218fea6251e873",
+    "cases_demo.json": "c9331e5553eb4d17d2b4ede3f0b95d001df28186d8420def84e78573245eaacb"
+  },
+  "row_counts": {
+    "canonical_demo": 4942,
+    "predictions_demo": 192,
+    "risk_features_demo": 192,
+    "cases_demo": 329
+  },
+  "cases_demo_n": 329,
+  "honest_notes": [
+    "DEMO ≠ MOCK：DEMO 是真实历史切片，可真实推荐；MOCK 永不参与真实推荐。",
+    "canonical_demo 只做行切片（保留全列），Golden Case 行数值与 FULL 逐值一致。",
+    "cases_demo.json 为任一 Golden Case 决策时点可检索案例的超集；运行时 as-of 再精过滤。",
+    "证据（GFS）不打包：FULL 与 DEMO 走同一实时证据路径，网络可用性不影响决策一致性。"
+  ]
+}

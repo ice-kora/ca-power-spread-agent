@@ -212,10 +212,15 @@ class TestDecisionService(unittest.TestCase):
     def test_post_trade_review_after_late_reveal(self):
         did = self.svc.run_decision(DD, NODE, HOUR, reveal=False)["decision_id"]
         self.assertEqual(self.svc.get_post_trade_review(did)["status"], OUTCOME_NOT_REVEALED)
-        self.svc.reveal_decision(did)
-        out = self.svc.get_post_trade_review(did)
+        # Service 层强制 Lock 前置：Lock 前 reveal 被拒（NOT_LOCKED），Lock 后才 REVEALED
+        locked = self.svc.reveal_decision(did)
+        self.assertEqual(locked["status"], "NOT_LOCKED")
+        self.svc.lock_decision(did)
+        out = self.svc.reveal_decision(did)
         self.assertEqual(out["status"], "REVEALED")
-        self.assertIsNotNone(out["actual_return"])
+        out2 = self.svc.get_post_trade_review(did)
+        self.assertEqual(out2["status"], "REVEALED")
+        self.assertIsNotNone(out2["actual_return"])
 
     # ------------------------------------------------------------- 决策 ID / 存档
     def test_decision_id_unique_and_queryable(self):

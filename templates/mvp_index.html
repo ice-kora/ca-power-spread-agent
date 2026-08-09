@@ -26,6 +26,12 @@
     </div>
   </header>
 
+  <!-- ============ MVP Status（V0.3.1.1 诚实状态栏 · 不误导业务方） ============ -->
+  <div class="card mvp-status" id="mvp-status">
+    <h2><span class="sec">MVP STATUS</span> <span class="hint">诚实状态栏 · 不误导业务方</span></h2>
+    <div class="status-grid" id="mvp-status-grid"><div class="empty">加载中…</div></div>
+  </div>
+
   <!-- ============ Cutoff banner ============ -->
   <div class="notice" id="banner">
     <span class="tag">AS-OF</span>
@@ -122,8 +128,15 @@ function fmt(x, nd) {
 function fmtP(x, nd) { return x === null || x === undefined || Number.isNaN(Number(x)) ? "—" : Number(x).toFixed(nd === undefined ? 3 : nd); }
 function numCls(v) { return v > 0 ? "pos" : (v < 0 ? "neg" : "zero"); }
 function sign(v) { const n = Number(v); if (!Number.isFinite(n)) return ""; return n > 0 ? "+" : ""; }
-function showError(msg) {
-  $("error-box").innerHTML = `<div class="notice" style="margin-bottom:12px"><span class="tag">ERR</span><p>${esc(msg)}</p></div>`;
+function showError(err) {
+  let msg = err, code = "", action = "", detail = "";
+  if (err instanceof Error) {
+    msg = err.message; code = err.code || ""; action = err.action || ""; detail = err.detail || "";
+  }
+  const codeHtml = code ? `<div class="err-code">ERROR CODE: ${esc(code)}</div>` : "";
+  const actionHtml = action ? `<div class="err-action"><b>Suggested action:</b> ${esc(action)}</div>` : "";
+  const detailHtml = detail ? `<div class="err-detail muted">detail: ${esc(detail)}</div>` : "";
+  $("error-box").innerHTML = `<div class="notice err" style="margin-bottom:12px"><span class="tag">ERROR</span><div>${codeHtml}<p><b>${esc(msg)}</b></p>${actionHtml}${detailHtml}</div></div>`;
 }
 function clearError() { $("error-box").innerHTML = ""; }
 async function post(path, body) {
@@ -134,7 +147,14 @@ async function post(path, body) {
   });
   let data = null;
   try { data = await r.json(); } catch (e) { data = { status: "error", message: "响应非 JSON" }; }
-  if (!r.ok && data.status !== "REVEALED") throw new Error(data.message || data.error || ("HTTP " + r.status));
+  if (!r.ok && data.status !== "REVEALED") {
+    const e = data.error || {};
+    const err = new Error(e.message || data.message || ("HTTP " + r.status));
+    err.code = e.code || data.status || ("HTTP_" + r.status);
+    err.action = e.suggested_action || "";
+    err.detail = e.detail || "";
+    throw err;
+  }
   return data;
 }
 async function get(path) {
@@ -153,10 +173,27 @@ const PILL = {
 };
 
 /* ============ init ============ */
+function renderMvpStatus(meta) {
+  const s = meta.mvp_status || {};
+  const items = [
+    ["MODEL ALPHA", s.model_alpha || "—", (s.model_alpha || "") === "WEAK" ? "warn" : ""],
+    ["PROFITABILITY VERIFIED", s.profitability_verified || "NO", (s.profitability_verified || "") === "YES" ? "ok" : "no"],
+    ["DATA MODE", s.data_mode || "DEMO", (s.data_mode || "") === "FULL" ? "ok" : "warn"],
+    ["LLM", s.llm || "NOT CONFIGURED", (s.llm || "") === "CONNECTED" ? "ok" : "warn"],
+    ["AUTO TRADING", s.auto_trading || "DISABLED", (s.auto_trading || "") === "ENABLED" ? "no" : "warn"],
+    ["SETTLEMENT", s.settlement || "SIMPLIFIED SIGNAL BACKTEST", ""]
+  ];
+  const grid = $("mvp-status-grid");
+  if (!grid) return;
+  grid.innerHTML = items.map(([k, v, cls]) =>
+    `<div class="st"><div class="k">${esc(k)}</div><div class="v ${cls}">${esc(v)}</div></div>`).join("");
+}
+
 async function init() {
   try {
     const meta = await get("/api/meta");
     state.meta = meta;
+    renderMvpStatus(meta);
     // nodes
     const nodeSel = $("inp-node");
     nodeSel.innerHTML = Object.entries(meta.nodes).map(([n, z]) =>
@@ -190,11 +227,13 @@ async function init() {
     const defEv = meta.default_evidence || "real";
     state.evidence = defEv; ev.value = defEv;
     ev.addEventListener("change", () => { state.evidence = ev.value; });
-    // llm badge
+    // llm badge（以 mvp_status.llm 为准：CONNECTED / NOT CONFIGURED）
     const llm = meta.llm || {};
-    $("llm-badge").className = "badge " + (llm.configured ? "ok" : "warn");
-    $("llm-badge").textContent = llm.configured
-      ? `LLM ONLINE (${esc(llm.provider || "?").toUpperCase()}/${esc(llm.model || "?")})`
+    const ms = meta.mvp_status || {};
+    const connected = (ms.llm || "") === "CONNECTED";
+    $("llm-badge").className = "badge " + (connected ? "ok" : "warn");
+    $("llm-badge").textContent = connected
+      ? `LLM CONNECTED (${esc(ms.llm_provider || llm.provider || "?").toUpperCase()}/${esc(ms.llm_model || llm.model || "?")})`
       : "LLM NOT CONFIGURED";
     // quick questions（措辞与 llm_copilot._PRESET_ROUTES 预设匹配）
     const qq = [
@@ -206,7 +245,7 @@ async function init() {
     ];
     $("quick-q").innerHTML = qq.map(q => `<button onclick="ask('${esc(q)}')">${esc(q)}</button>`).join("");
     renderWorkspace("empty");
-  } catch (e) { showError("初始化失败: " + e.message); }
+  } catch (e) { showError(e); }
 }
 
 function renderWorkspace(html) {
@@ -235,13 +274,23 @@ async function runDecision() {
     state.post_trade = null;
     renderDecision();
   } catch (e) {
-    showError(e.message);
+    showError(e);
   } finally {
     btn.disabled = false; btn.textContent = old;
   }
 }
 
 /* ============ RENDER ============ */
+function renderWarnings() {
+  const w = state.decision.warnings || [];
+  if (!w.length) return "";
+  return w.map(x => `<div class="notice warn" style="margin-bottom:12px"><span class="tag">WARN</span><div>
+    <div class="err-code">ERROR CODE: ${esc(x.code || "")}</div>
+    <p><b>${esc(x.message || "")}</b></p>
+    <div class="err-action"><b>Suggested action:</b> ${esc(x.suggested_action || "")}</div>
+  </div></div>`).join("");
+}
+
 function renderDecision() {
   const dec = state.decision;
   const ctx = dec.context || {};
@@ -249,7 +298,7 @@ function renderDecision() {
   $("status-badge").className = "badge " + (state.locked ? "ok" : "warn");
   $("status-badge").textContent = "决策状态: " + (state.locked ? "LOCKED" : "UNLOCKED");
   const html = [
-    renderS1(), renderS2(), renderS3(), renderS4(), renderS5(), renderS6(), renderS7(), renderReveal(), renderAudit()
+    renderWarnings(), renderS1(), renderS2(), renderS3(), renderS4(), renderS5(), renderS6(), renderS7(), renderReveal(), renderAudit()
   ].join("");
   renderWorkspace(html);
 }
@@ -265,6 +314,7 @@ function renderS1() {
     ["Target Hour", "H" + c.hour],
     ["Node", `${c.node}`],
     ["Zone", c.zone],
+    ["Data Mode", m.data_mode || (m.mvp_status || {}).data_mode || "—"],
     ["Market Rule Version", m.versions.market_rule],
     ["Model Version", m.versions.model],
     ["Risk Gate Version", m.versions.risk_gate],
@@ -516,7 +566,7 @@ async function lockDecision() {
     $("btn-lock").textContent = "✓ LOCKED";
     $("btn-reveal").disabled = false;
     $("lock-info").textContent = "locked_at: " + data.locked_at;
-  } catch (e) { showError(e.message); }
+  } catch (e) { showError(e); }
 }
 
 async function revealOutcome() {
@@ -527,7 +577,7 @@ async function revealOutcome() {
     state.post_trade = data.post_trade;
     const rb = $("btn-reveal"); if (rb) rb.disabled = true;
     renderReveal();
-  } catch (e) { showError(e.message); }
+  } catch (e) { showError(e); }
 }
 
 /* ============ Reveal + Post-trade Review ============ */
@@ -616,24 +666,30 @@ function renderRevealFilled() {
      <div class="ev-list">${notes.length ? notes.map(n => `<div class="ev-item"><div class="summary">${esc(n)}</div></div>`).join("") : `<div class="empty">（无附加复盘说明）</div>`}</div>`);
 }
 
-/* ---- Audit ---- */
+/* ---- Audit（V0.3.1.1：真实运行审计，OVERALL 服务端计算，页面不写死 PASS） ---- */
 function renderAudit() {
   const a = state.decision.audit || {};
+  const rt = a.runtime || {};
+  const items = rt.items || [];
+  const overall = rt.overall || a.overall || "UNKNOWN";
   const m = a.meta || {};
-  const rows = [
-    ["Data Leakage Check", a.data_leakage_check || "—"],
-    ["Mock Data Used", a.mock_data_used || "—"],
-    ["Backtest-safe Features", a.backtest_safe_features || "—"],
-    ["Evidence Time Gate", a.evidence_time_gate || "—"],
-    ["Decision Cutoff (PT)", a.decision_cutoff_pt || "—"],
-    ["Decision Cutoff (UTC)", a.decision_cutoff_utc || "—"]
-  ];
-  const grid = rows.map(([k, v]) => `<div class="item"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join("");
+  const overPill = PILL[overall] || `<span class="pill">${esc(overall)}</span>`;
+  const auditItems = items.map(it => {
+    const st = it.status || "PASS";
+    return `<div class="audit-item">
+      <div class="audit-name">${esc(it.name || it.key || "?")}</div>
+      <div>${PILL[st] || `<span class="pill">${esc(st)}</span>`}</div>
+      <div class="muted mono" style="font-size:11.5px">checked: ${fmt(it.checked)} · failed: ${fmt(it.failed)}</div>
+      ${it.note ? `<div class="muted" style="font-size:11.5px;margin-top:3px">${esc(it.note)}</div>` : ""}
+    </div>`;
+  }).join("");
+  const emptyHtml = `<div class="empty">Runtime Audit 未生成（服务端未提供，且无本地可计算数据）。</div>`;
   const versions = Object.entries(m).filter(([k]) => k !== "honest_labels" && k !== "generator").map(([k, v]) =>
     `<div><code>${esc(k)}</code> = ${esc(v)}</div>`).join("");
   const labels = (m.honest_labels || []).map(l => `<li>${esc(l)}</li>`).join("");
-  return section("S9", "Audit Panel（审计面板）", "每一步可审计、可解释、不穿越",
-    `<div class="audit-grid">${grid}</div>
+  return section("S9", "Audit Panel（审计面板）", "OVERALL 由真实运行审计计算 · 不写死 PASS",
+    `<div class="audit-overall"><span class="tag">OVERALL</span> ${overPill}</div>
+     <div class="audit-grid">${items.length ? auditItems : emptyHtml}</div>
      <div class="versions">${versions}</div>
      <div style="height:8px"></div>
      <div class="notice info"><span class="tag">诚实</span><ul>${labels || "<li>无</li>"}</ul></div>`);
@@ -650,7 +706,9 @@ async function ask(q) {
     const data = await post("/api/ask", { question, decision_id: state.decision_id });
     out.innerHTML = renderAsk(data);
   } catch (e) {
-    out.innerHTML = `<div class="notice"><span class="tag">ERR</span><p>${esc(e.message)}</p></div>`;
+    const code = e.code ? `<div class="err-code">ERROR CODE: ${esc(e.code)}</div>` : "";
+    const action = e.action ? `<div class="err-action"><b>Suggested action:</b> ${esc(e.action)}</div>` : "";
+    out.innerHTML = `<div class="notice err"><span class="tag">ERROR</span><div>${code}<p>${esc(e.message)}</p>${action}</div></div>`;
   }
 }
 
@@ -716,7 +774,9 @@ async function generateBrief(allHours, allNodes) {
     });
     out.innerHTML = renderBrief(data);
   } catch (e) {
-    out.innerHTML = `<div class="notice"><span class="tag">ERR</span><p>${esc(e.message)}</p></div>`;
+    const code = e.code ? `<div class="err-code">ERROR CODE: ${esc(e.code)}</div>` : "";
+    const action = e.action ? `<div class="err-action"><b>Suggested action:</b> ${esc(e.action)}</div>` : "";
+    out.innerHTML = `<div class="notice err"><span class="tag">ERROR</span><div>${code}<p>${esc(e.message)}</p>${action}</div></div>`;
   }
 }
 function generateBriefAll() { generateBrief(false, true); }
