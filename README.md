@@ -1,93 +1,121 @@
-# CAISO 价差交易决策辅助 · V0.2 白盒决策流水线
+# CAISO 价差交易决策辅助 · V0.3.1（Web + LLM Agent MVP）
 
-预测 CAISO 日前(DA)与实时(RTPD)价差 `Return = DA − RTPD` 的方向与幅度，辅助 **SELL_DA / BUY_DA / NO_TRADE** 交易决策。
+预测 CAISO 日前（DA）与实时（RTPD）价差 `Return = DA − RTPD` 的方向与幅度，辅助 **SELL_DA / BUY_DA / NO_TRADE** 交易决策。V0.3.1 把 V0.2 的白盒决策链封装成**浏览器可用的 Decision Workspace + 自然语言 Ask Trading Agent**：选案例 → RUN → LOCK → REVEAL → ASK → BRIEF，全流程可审计、可解释、不穿越。
 
-V0.2 重构为**白盒、可审计、可解释的决策流水线**：单一 **Production Predictive Model** → Agent Evidence → **Evidence Time Gate**（防穿越）→ Case Library → **Risk Gate** → **White-box Rule Engine** → 人工确认 → 复盘。
+> **诚实标注（请先读）**
+> - **MODEL SIGNAL IS EXPERIMENTAL / CURRENT ALPHA = WEAK** —— 模型信号是实验性的，当前能力很弱。
+> - **Signal / Strategy MVP，不是已验证盈利系统** —— 这是演示/研究系统，不是能保证赚钱的交易软件。
+> - **LLM 不决定方向** —— 交易方向一律由白盒 DecisionService + 6 个结构化 Tool 程序化决定；LLM 只做解释，且不能修改/覆盖工具返回的数字与最终建议（程序化完整性守卫拦截）。
+> - **决策路径无 MOCK** —— 特征、证据、历史案例全部真实且 as-of；无真实证据时诚实显示 `NO ELIGIBLE EXTERNAL EVIDENCE`，绝不编造。
 
-> 状态：V0.2（白盒决策流水线）。**模型定位**：线上只跑一个 Predictive Model（`model_v2.py`，只输出预测量，不直接出 BUY/SELL）；Rule Baseline = benchmark / 回测基线；Interpretable = 开发与验证工具（特征方向 sanity check）；两者**不参与线上投票**。决策 cutoff 已统一为官方 **D-1 日 10:00 PT**（DAM Market Close；13:00 是 DA 结果发布 = label 可见时点）。
+---
 
-## 目录结构
+## 1. 系统是什么
 
-```
-CA-电力交易预测/
-├── 价格数据/           # 3节点 DA/RTPD/DARTPD Return（小时级）
-├── load_*_TAC_*.csv    # 系统负荷预测/实际
-├── zone_weather_hourly.csv
-├── 节点位置.xlsx
-├── agent/              # 【V0.2】白盒 Agent 模块
-│   ├── evidence/       #   证据 schema + Evidence Time Gate + 测试
-│   ├── case_library/   #   历史案例库（18 case，只检索不决策）
-│   └── explanation/    #   决策卡片生成（Decision Card）
-├── code/
-│   ├── canonical.py    # 单一特征实现 + 防泄漏 + Leakage Guard
-│   ├── model_v2.py     # 【V0.2】单一 Production Predictive Model
-│   ├── model_c.py      # V0.1 三层模型（Rule/Interpretable/CatBoost，保留作 benchmark/对照）
-│   ├── risk_gate/      # 【V0.2】独立 Risk Gate（11 规则 + 校准 + 测试）
-│   ├── decision/       # 【V0.2】白盒 Rule Engine（三态，可配置可测试）
-│   ├── backtest.py     # V0.1 回测引擎
-│   ├── backtest_v2.py  # 【V0.2】Signal backtest（可插拔策略）
-│   ├── backtest_v2_ab.py # 【V0.2.1】Agent Evidence A/B + PnL 逐笔对账（Agent E）
-│   ├── analysis/       # 可复现分析脚本（offline validation）
-│   └── data/ models/ backtest_outputs/   # 生成物（gitignore）
-├── docs/               # 架构与评审文档（见下）
-└── README.md / CLAUDE.md
-```
+加州电力市场里"电力"分两种方式买卖：**DA**（提前一天约定，10:00 前报价、约 13:00 出结果）和 **RTPD**（当天实时逐小时结算）。两者之差即价差 `Return = DA − RTPD`。
 
-## 快速开始
+系统做**虚拟交易**（Convergence Bidding，1 MWh/仓）：
+- 预期 `Return > 0`（DA 高于 RTPD）→ **SELL_DA**，赚 `DA − RTPD`；
+- 预期 `Return < 0` → **BUY_DA**，赚 `RTPD − DA`；
+- 判断不出 / 风控拒绝 → **NO_TRADE**（PnL = 0）。
+
+一笔决策的完整链路：`10:00 PT cutoff → as-of 特征 → 模型预测 → Agent Evidence（Time Gate 过滤）→ 历史相似案例（as-of）→ Risk Gate → 白盒 Rule Engine → LOCK → REVEAL Actual → PnL → Post-trade Review → Audit`。
+
+## 2. 一键启动
+
+前置：Python 3 + 已生成数据 artifact（`code/data/canonical.parquet`、`predictions_v2.csv`、`stage3/risk_features.parquet`、`agent/case_library/cases*.json`）。
 
 ```bash
-# 数据层：原始数据 → canonical dataset（无泄漏）
-python code/read_data.py        # master.csv
-python code/canonical.py        # canonical.parquet + feature_schema.json
+# 1) 安装依赖
+pip install -r requirements.txt
 
-# 建模：单一 Production Predictive Model（只输出预测量）
-python code/model_v2.py         # predictions_v2.csv + model_v2_notes.json
+# 2) 启动前自检（可选；缺 artifact 时给出重建指引）
+python prepare_mvp.py
 
-# 回测：Signal backtest（V0.2，可插拔策略）
-python code/backtest_v2.py      # backtest_v2_summary.json
-
-# Agent 层：Evidence Time Gate 测试 / 案例库 / 决策卡
-python agent/evidence/test_time_gate.py
-python agent/case_library/init_cases.py
-python agent/explanation/cards.py
+# 3) 启动 Web（默认 http://127.0.0.1:5000）
+python mvp_web.py
+#    不取外部 GFS 证据、纯本地演示：
+python mvp_web.py --offline
 ```
 
-## 文档索引（docs/）
+打开浏览器访问 `http://127.0.0.1:5000`。
 
-| 文档 | 内容 |
-|---|---|
-| `Architecture.md` | 【V0.2】架构总览 + 能力边界 |
-| `DecisionPipeline.md` | 【V0.2】8 步决策流水线 + Evidence Time Gate + 规则清单 |
-| `market_timeline.md` | 【V0.2】官方时间线（cutoff 10:00，13:00 = DA 结果发布） |
-| `business_contract.md` | 业务定义与铁律（决策时点、Return、三态） |
-| `feature_availability_matrix.md` | 逐特征可用性矩阵 |
-| `leakage_report.md` | 泄漏修复与 Leakage Guard |
-| `FeatureEngineering.md` | 特征工程（X/label、防泄漏） |
-| `Model.md` | V0.1 三层模型（benchmark 基线说明） |
-| `Backtest.md` | V0.1 回测引擎与 Risk Gate 结果 |
-| `risk_gate_v02_rules.md` | Risk Gate 11 条规则文档 + Rule Engine 规格 |
-| `v0.2_backtest.md` | V0.2 Signal backtest 对比 |
-| `v0.2.1_evidence_ab.md` | 【V0.2.1】Agent Evidence A/B（无证据 vs 极端状态证据，逐笔对账） |
-| `v0.2.1_pnl_reconciliation.md` | 【V0.2.1】PnL 逐笔对账（Production Signal Set / Calibration Candidate Set 两口径） |
-| `v0.2_architecture_diff.md` | V0.1→V0.2 KEEP/MODIFY/REMOVE/ADD |
-| `v0.2_lead_summary.md` | V0.2 最终整合与价值回答 |
-| `stage3/` | 极端事件/分层分析（V0.1 阶段三结论，历史） |
+> 若 `pip install -r requirements.txt` 后无法启动，先跑 `python prepare_mvp.py`，它会逐项检查 artifact 与关键依赖，缺失时给出具体重建命令。
+> 依赖清单见 `requirements.txt`；LLM 官方 SDK（openai/anthropic）为可选 —— 不装时 Ask Agent 走 httpx/requests 直连或诚实降级。
 
-> **PnL 对账口径（V0.2.1 起，团队统一标注）**：
-> - **Production Signal Set** = Predictive Model only 在 test 的完整候选（\|er\|≥5 & conf≥0.2）。
-> - **Calibration Candidate Set** = Risk Gate 校准/验证时的全候选（val + test）。
-> 两者**不混写**，对账恒等式 `Original PnL == Accepted PnL + Rejected PnL` 逐笔成立
-> （见 `v0.2.1_pnl_reconciliation.md`；生成物 `code/data/backtest_v2_ab.json`）。
+## 3. Demo 怎么操作
 
-## 核心结论（V0.2）
+首页是 **Decision Workspace**（交易决策工作台），完整闭环 6 步：
 
-- **单一生产模型**：`model_v2.py` 只输出 `expected_return / prob_positive / prob_negative / confidence / uncertainty`，**不直接输出 BUY/SELL**；交易动作由白盒 Rule Engine 判定。
-- **三层模型不参与线上投票**：Rule / Interpretable / CatBoost 仅作 V0.1 benchmark 与 offline validation；"三模型一致性"残留已从 Production Explanation 与正式 Risk Gate 移除。
-- **Evidence Time Gate（防穿越硬约束）**：任何证据必须 `published_at <= decision_cutoff`（D-1 10:00 PT）才进决策层；post-decision 证据只进复盘。
-- **Risk Gate = 护栏**：把 test 上系统性负期望交易移除（test maxDD −138k → −3k、worst −2,216 → −208），但**不创造 alpha**（PnL 未改善）。
-- **Agent Evidence A/B（V0.2.1）**：真实 as-of 极端状态证据（离线持久性代理，`directional_effect=UNCERTAIN`）经 Time Gate + Risk Gate 新规则 R12 消费后，ZP26 test 上 PnL −820 → +1,113（净 +1,933，避免尾部亏损 5,162 / 误伤盈利 3,229）；但改进集中在少数极端日、阈值未能在 val 校准、证据为持久性代理而非真实 GFS 预报 → 判定 **YES_WITH_LIMITS**（非 YES）。ELCA A/B 无差异（Gate 已全关）。
-- **诚实边界**：盈利主要来自市场漂移而非预测；test 窗口仅 65 天；confidence/uncertainty 未校准（需尾部/分位校准）；真实外部数据源未接入（Evidence 全 UNCERTAIN）。
+| 步骤 | 操作 | 说明 |
+|---|---|---|
+| ① **选案例** | 顶部"黄金案例"（B/C1/C2/D/E）或自定义 `decision_date × node × hour`，选证据模式（实时 GFS / 离线静态） | 合法决策日 ≈ `2026-06-01 ~ 2026-08-04`（test 窗口）；三节点 `CONTROLX_1_N001`、`SNLNDRO_1_N001`（ZP26）、`ELCAJNGT_7_N001`（SP15 冷启动） |
+| ② **RUN** | 点 RUN DECISION | 服务端跑完整白盒决策链，返回结构化决策对象（模型/证据/案例/风控/规则/最终建议） |
+| ③ **LOCK** | 点 LOCK DECISION | **锁定决策**。锁定前系统绝不展示任何 actual/outcome |
+| ④ **REVEAL** | 点 REVEAL ACTUAL OUTCOME（仅锁定后可点） | 揭晓真实 DA/RTPD/Return，算 PnL（1 MWh）与复盘分类 |
+| ⑤ **ASK** | Ask Trading Agent 面板输入自然语言问题 | LLM 经 6 个 Tool 取事实回答并展示 **Agent Trace**；无 Key 时诚实显示 `LLM NOT CONFIGURED` |
+| ⑥ **BRIEF** | GENERATE DAILY BRIEF | 扫描指定日全部已生成决策，输出 BUY/SELL/NO_TRADE 汇总、Top 机会、Top 风险 |
 
-## 环境
+## 4. 每块内容是什么意思（速查表）
 
-Python 3 + pandas/numpy/openpyxl/lightgbm/catboost/matplotlib/flask。价格 xlsx 需 openpyxl ≥3.1.5（或直接 openpyxl 读取）。
+| 屏幕上/决策对象里的英文 | 中文意思 | 备注 |
+|---|---|---|
+| Decision Cutoff | 决策截止 = 当天 **10:00 PT**（DAM 官方 bid cutoff） | 系统的"时间红线" |
+| as-of / decision_eligible | "截至该时点可获得 / 是否合规用于决策" | 防穿越核心概念 |
+| POST-DECISION / NOT USED | 晚于 cutoff 的证据，只进复盘 | 说明系统不偷看未来 |
+| expected_return | 预期价差（DA−RTPD，$/MWh） | 决定方向 |
+| model_signal_strength | 模型信号强度（**非概率**） | 仅供参考，不能当置信度 |
+| uncertainty | 不确定度 | 越大越没把握 |
+| Risk Gate REJECT | 风控拒绝入场（一票否决） | PASS / WARNING / REJECT |
+| BUY_DA / SELL_DA / NO_TRADE | 买入日前 / 卖出日前 / 不交易 | 最终动作 |
+| PnL | 盈亏（$ / MWh，1 MWh 仓） | 事后结算 |
+| reason_code | 规则命中的编号 | 审计用（页面有业务翻译） |
+| Agent Trace | LLM 一次问答的工具调用流水 | 谁调了什么工具、返回了什么 |
+| availability_basis | 特征可用性依据（STATIC/STRUCTURAL_LAG/ASSUMED_AVAILABLE/…） | 展示口径 == Time Gate 判定口径 |
+
+## 5. Ask Trading Agent（LLM Copilot）
+
+页面上方 **Ask Agent** 面板支持自然语言追问。实现：`code/llm_copilot.py`，通过 6 个结构化 Tool 获取事实：
+
+1. `get_decision(decision_date, node, hour)` — 模型输出 / 风控 / 规则引擎 / 最终建议
+2. `get_feature_explanation(decision_id)` — Top 特征 + 值 + z 贡献 + 来源 + 可用性
+3. `get_evidence(decision_id)` — eligible / rejected 证据 + 来源 + 发布时间 + 隔离原因
+4. `get_similar_cases(decision_id)` — Top 3 相似案例 + `case_available_at` 证明 as-of
+5. `get_data_provenance(decision_id)` — 特征来源 / 原始文件 / 可用性 / 是否 MOCK
+6. `get_post_trade_review(decision_id)` — 仅 `outcome_revealed=True` 可调用，否则 `OUTCOME_NOT_REVEALED`
+
+预设问题自动选工具（如"为什么不卖"→ get_decision；"类似案例"→ get_similar_cases）；非预设问题走 LLM tool-calling / router。**铁律**：LLM 只解释不决策，工具返回的数字与最终建议不可被 LLM 覆盖（程序化完整性守卫，违反即拦截并记入 Trace）。
+
+**无 API Key 时**：核心决策流程照常运行；Ask 面板诚实显示 `LLM NOT CONFIGURED`，不会编造回答。
+
+## 6. Data Sources / How It Works
+
+- **Data Sources**：`/data-sources`（页面）逐字段登记来源（价格/负荷/天气/GFS 证据/节点映射），诚实标注"核心数据来自公司文件（已与 CAISO OASIS 对账），GFS 预报仅作 Agent Evidence、不进入模型特征"。
+- **How It Works**：`/how-it-works`（页面）展示决策流水线、交易语义、Rule Engine 规则表（R-A~R-I）与诚实边界。
+- 实现：`mvp_web.py`（Flask Web）→ `code/decision_service.py`（DecisionService + 6 Tool）→ `code/llm_copilot.py`（LLM Copilot）→ `agent/evidence/*`（统一 GFS Collector + Evidence Time Gate）→ `code/risk_gate/` + `code/decision/rule_engine.py`（裁决）。
+
+## 7. MVP 简化（诚实说明）
+
+1. **模型信号弱**：`CURRENT ALPHA = WEAK`，幅度/方向区分度都很有限；**不要拿它当赚钱信号**。
+2. **真实外部证据有限**：唯一接入的真实源是 GFS 天气预报（Open-Meteo 历史档案，06Z 可严格回测），只报天气、不直接说价差方向；其余事件类源未接入。
+3. **天气特征是"历史滞后"**：模型用 T−2 实际天气（`t2m_lag1` 等），不是决策时点能拿到的 D+1 预报档案。
+4. **Risk Gate 是护栏不是发动机**：能把系统性亏损交易拦掉，但不会让弱信号变强；test 窗口 BUY 被系统性拒绝，保守是设计而非遗漏。
+5. **PnL 简化**：1 MWh/仓，仅覆盖 DAM/RTPD 价差，不含 FMM/阻塞/费用等完整结算。
+6. **Case Library 来自 test 窗口**：窗口早期几乎不触发，越往后越多。
+7. **ELCA 冷启动**：样本不足，风控基本全拒。
+
+## 8. 测试与审计
+
+12 项 V0.3.1 验收测试（Web/CLI 一致、统一 GFS、available_at 展示==Time Gate、LLM 不可覆盖工具数字与最终建议、未 Reveal 拒绝 post_trade、MOCK 隔离、Case 防穿越、Agent Trace、无 Key 降级、mock LLM 三问、页面路由）：
+
+```bash
+python code/tests/test_mvp_v031.py      # 严格输出 TOTAL / PASSED / FAILED / SKIPPED
+python prepare_mvp.py                   # 启动前自检
+```
+
+回归测试：`python -m unittest code.tests.test_decision_service code.tests.test_llm_copilot`
+
+## 9. 旧版指引
+
+- CLI Demo（V0.2 文本版决策报告）：`python mvp_demo.py --help`；非技术用户指南见 `mvp_readme.md`。
+- V0.2 技术文档：`docs/Architecture.md`、`docs/DecisionPipeline.md`、`docs/business_contract.md`、`docs/feature_availability_matrix.md` 等；`工程报告.md`、`数据审计与业务口径.md`。

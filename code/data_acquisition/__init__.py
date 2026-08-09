@@ -8,6 +8,7 @@
   base.py          Collector 基类：run(query_date) → raw+normalized 落盘 + 时间戳 + 校验
   weather_gfs.py   GFS 历史预报采集器（真实源：Open-Meteo Single Runs；00Z/06Z 可严格回测，
                    12Z/18Z 无法可靠证明发布早于 cutoff → 不可回测，见 docs/asof_schema_design.md §2.3）
+                   —— P0-1 单一事实来源；agent/evidence/gfs_forecast.py 为其纯 Adapter
   caiso_oasis.py   CAISO 官方 DA 负荷预报采集器（真实源：OASIS SLD_FCST，
                    not_backtest_safe=True）
   validation.py    数据质量校验（缺失率 / DST / decision_eligible / 值域 / mock 声明）

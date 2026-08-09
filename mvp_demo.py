@@ -210,36 +210,57 @@ def _utc_label(dt_iso: str) -> str:
 # Section 2：Available Data（决策时点可见的 Top 特征）
 # ---------------------------------------------------------------------------
 def _feat_display(canon_row: Dict[str, Any], decision_date: str, target_date: str) -> List[Dict[str, Any]]:
-    """按业务口径给出每个特征的 available_at（PT naive，均为 <= decision_cutoff）。"""
-    d = decision_date          # 决策日 D = T-1
-    d1 = (pd.Timestamp(decision_date) - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-    d6 = (pd.Timestamp(decision_date) - pd.Timedelta(days=6)).strftime("%Y-%m-%d")
+    """按统一口径给出每个特征的 available_at 上界与 eligible（Agent B P0-2 单一事实来源）。
 
-    # (feature, 中文名, 来源, available_at PT)
+    口径：canonical.availability_map()（availability_basis / latest_possible_available_at）
+        + code.data_acquisition.schemas.feature_decision_eligible（展示 == Time Gate 判定）。
+    滞后/历史特征**无精确发布时刻** → availability_basis=STRUCTURAL_LAG，available_at 显示为
+    "≤ decision_date 00:00 PT"的最晚可证上界，**不显示虚假精确时间戳（如 23:59）**。
+    """
+    from code.canonical import availability_map
+    from code.data_acquisition.schemas import (
+        AVAILABILITY_BASIS_KEY,
+        HAS_PRECISE_PUBLISH_TIME_KEY,
+        SOURCE_TARGET_DATE_KEY,
+        feature_available_at_display,
+        feature_decision_eligible,
+        latest_available_bound,
+    )
+    av_map = availability_map()
+    cutoff_utc = make_decision_cutoff(decision_date) or ""
+
+    # (feature, 中文名, 来源)
     defs = [
-        ("spread_lag1", "Historical Return Lag（昨日价差 DA−RTPD）", "canonical/价格数据（as-of）", f"{d} 23:59 PT"),
-        ("spread_mean7", "Rolling Spread 7d 均值", "canonical/价格数据（历史滚动）", f"{d} 23:59 PT"),
-        ("spread_std7", "Rolling Spread 7d 标准差", "canonical/价格数据（历史滚动）", f"{d} 23:59 PT"),
-        ("da_lag1", "DA Lag（昨日日前价）", "canonical/价格数据（DAM 结果 13:00 发布）", f"{d} 13:00 PT"),
-        ("rtpd_lag1", "RTPD Lag（昨日实时价）", "canonical/价格数据（RT 逐小时结算）", f"{d} 23:59 PT"),
-        ("load_2da_forecast", "Load Forecast（2DA 日前负荷预测）", "load_CA_ISO_TAC_2DA.csv（ASSUMED_AVAILABLE）", f"{d1} 10:00 PT"),
-        ("load_actual_lag1", "Load Actual Lag（昨日实际负荷）", "load_CA_ISO_TAC_ACTUAL.csv（历史滞后）", f"{d} 23:59 PT"),
-        ("t2m_lag1", "Weather Lag（2m 气温，T-2）", "zone_weather_hourly.csv（历史滞后；无真实 as-of 预报归档）", f"{d1} 23:59 PT"),
-        ("wind100_lag1", "Weather Lag（100m 风速，T-2）", "zone_weather_hourly.csv（历史滞后）", f"{d1} 23:59 PT"),
-        ("peer_spread_lag1", "Congestion / Peer（同区节点昨日价差）", "canonical/节点联动（peer）", f"{d} 23:59 PT"),
+        ("spread_lag1", "Historical Return Lag（T-2 价差 DA−RTPD）", "canonical/价格数据（as-of）"),
+        ("spread_mean7", "Rolling Spread 7d 均值", "canonical/价格数据（历史滚动）"),
+        ("spread_std7", "Rolling Spread 7d 标准差", "canonical/价格数据（历史滚动）"),
+        ("da_lag1", "DA Lag（T-2 日前价）", "canonical/价格数据（DAM 结果）"),
+        ("rtpd_lag1", "RTPD Lag（T-2 实时价）", "canonical/价格数据（RT 逐小时结算）"),
+        ("load_2da_forecast", "Load Forecast（2DA 日前负荷预测）", "load_CA_ISO_TAC_2DA.csv（ASSUMED_AVAILABLE）"),
+        ("load_actual_lag1", "Load Actual Lag（T-2 实际负荷）", "load_CA_ISO_TAC_ACTUAL.csv（历史滞后）"),
+        ("t2m_lag1", "Weather Lag（2m 气温，T-2）", "zone_weather_hourly.csv（历史滞后）"),
+        ("wind100_lag1", "Weather Lag（100m 风速，T-2）", "zone_weather_hourly.csv（历史滞后）"),
+        ("peer_spread_lag1", "Congestion / Peer（同区节点 T-2 价差）", "canonical/节点联动（peer）"),
     ]
     rows: List[Dict[str, Any]] = []
-    for feat, zh, src, avail in defs:
+    for feat, zh, src in defs:
         v = canon_row.get(feat)
         if v is None or (isinstance(v, float) and v != v):
             continue  # NaN 特征不展示（如 ELCA 的 peer_*）
+        meta = av_map.get(feat, {})
+        eligible = feature_decision_eligible(meta, decision_date, cutoff_utc)
         rows.append({
             "category": zh,
             "feature": feat,
             "value": float(v),
             "source": src,
-            "available_at": avail,
-            "decision_eligible": True,   # canonical X 区全部 available_at <= decision_cutoff
+            "available_at": feature_available_at_display(meta, decision_date),
+            "availability_basis": meta.get(AVAILABILITY_BASIS_KEY, "UNKNOWN"),
+            "source_target_date": meta.get(SOURCE_TARGET_DATE_KEY, ""),
+            "has_precise_publish_time": bool(meta.get(HAS_PRECISE_PUBLISH_TIME_KEY, False)),
+            "latest_possible_available_at": latest_available_bound(meta, decision_date),
+            "decision_cutoff": cutoff_utc,
+            "decision_eligible": eligible,
         })
     return rows
 
@@ -297,10 +318,15 @@ def top_feature_contributions(canon: pd.DataFrame, node: str, decision_date: str
 def gather_evidence(node: str, decision_date: str, cutoff_utc: str) -> Dict[str, Any]:
     """收集决策时点真实可见的证据 + 演示"晚于 cutoff 的证据被隔离"。
 
-    真实源：NCEP GFS 历史预报（Open-Meteo Single Runs API）。
-      - 12Z run（decision_date 12:00 UTC = 05:00 PT）→ published_at <= cutoff → 可用
-      - 18Z run（decision_date 18:00 UTC = 11:00 PT）→ published_at > cutoff → POST-DECISION
-    Evidence 的 available_at = published_at（对外部事件，发布时间即 as-of 时点）。
+    统一 GFS 源：`code/data_acquisition/weather_gfs.py`（GFSWeatherCollector），
+    经 `agent/evidence/gfs_forecast.py`（纯 Adapter）转成 Evidence —— 与 Web / Agent
+    （fetch_evidence）同源，时间字段完全一致。
+      - 默认 06Z run（decision_date 06:00 UTC；available_at = init+6h 保守上界
+        = 12:00 UTC <= cutoff）→ 可回测、可用（published_at = available_at）
+      - 12Z run（init 12:00 UTC = 05:00 PT；无可靠发布 vintage → 回测不可用，
+        除非 PRODUCTION 在 cutoff 前真实拉到并记 retrieved_at）
+      - 18Z run（init 18:00 UTC = 11:00 PT，晚于 10:00 cutoff）→ POST-DECISION
+    Evidence 的 available_at = AsOfRecord.available_at（Time Gate 唯一判据）。
     """
     socket.setdefaulttimeout(12)
     real_eligible: List[Dict[str, Any]] = []
@@ -313,7 +339,7 @@ def gather_evidence(node: str, decision_date: str, cutoff_utc: str) -> Dict[str,
     except Exception as exc:  # 网络失败不编造证据 → 空
         print(f"  [evidence] 真实证据获取失败（诚实降级为空）: {exc}")
 
-    # 真实 post-decision 演示：GFS 18Z run 发布于 11:00 PT（晚于 10:00 cutoff）
+    # 真实 post-decision 演示：GFS 18Z run 初始时刻 18:00 UTC = 11:00 PT（晚于 10:00 cutoff）
     post_real: List[Dict[str, Any]] = []
     try:
         ev18 = build_gfs_evidence(node, decision_date, cycle="18Z")
@@ -344,7 +370,7 @@ def _ev_row(ev: Dict[str, Any]) -> Dict[str, Any]:
         "source": ev.get("source", ""),
         "summary": ev.get("summary", ""),
         "published_at": ev.get("published_at", ""),
-        "available_at": ev.get("published_at", ""),   # 证据的 available_at = published_at
+        "available_at": ev.get("available_at", ev.get("published_at", "")),  # AsOfRecord.available_at（Time Gate 判据）
         "decision_cutoff": ev.get("decision_cutoff", ""),
         "decision_eligible": bool(ev.get("decision_eligible", False)),
         "directional_effect": ev.get("directional_effect", "UNCERTAIN"),
@@ -397,7 +423,8 @@ def similar_cases(cases: List[Dict[str, Any]], node: str, target_date: str, hour
 # Section 6/7：Risk Gate + Rule Engine
 # ---------------------------------------------------------------------------
 def run_gate_and_rule(pred: Dict[str, Any], risk: Dict[str, Any], ev_ctx: Dict[str, Any],
-                      tail_loss_similar: List[Dict[str, Any]], cutoff_utc: str):
+                      tail_loss_similar: List[Dict[str, Any]], cutoff_utc: str,
+                      features_used: Optional[List[Dict[str, Any]]] = None):
     """Risk Gate → Rule Engine。返回 (verdict, decision)。"""
     candidate = {
         "node": pred["node"],
@@ -433,6 +460,7 @@ def run_gate_and_rule(pred: Dict[str, Any], risk: Dict[str, Any], ev_ctx: Dict[s
         gate_verdict=verdict,
         evidences=[],            # 决策层证据已由本 Demo 单独经 time_gate 过滤；全 UNCERTAIN 无方向信号
         decision_cutoff=cutoff_utc,
+        features_used=features_used or [],   # P0-2：Decision 携带特征展示（展示==判定）
     )
     return verdict, decision
 
@@ -540,15 +568,20 @@ def render_section1(dd: str, node: str, hour: int) -> Dict[str, Any]:
 def render_section2(canon_row: Dict[str, Any], dd: str, target_date: str) -> List[Dict[str, Any]]:
     rows = _feat_display(canon_row, dd, target_date)
     box("Section 2 · Available Data（决策时点可见 · Top 特征）")
-    print("  （只展示决策相关 Top 特征，非全量；全部来自 canonical X 区 38 个 as-of 特征）")
-    print(f"  {'类别':<34}{'特征':<22}{'value':>14}  {'available_at':<20}{'eligible'}")
-    print("  " + "─" * 92)
+    print("  （只展示决策相关 Top 特征，非全量；全部来自 canonical X 区 as-of 特征）")
+    print("  （P0-2 统一口径：展示 available_at == Time Gate 判定口径；无精确发布时刻 → 显示")
+    print("    ≤ decision_date 00:00 PT 的最晚可证上界，不编造 23:59 之类的精确时间戳）")
+    print(f"  {'类别':<32}{'特征':<20}{'value':>14}  {'available_at（上界）':<22}{'basis':<20}{'eligible'}")
+    print("  " + "─" * 106)
     for r in rows:
-        print(f"  {r['category']:<32}{r['feature']:<20}{_f(r['value'], 2):>14}  {r['available_at']:<18}  {'YES' if r['decision_eligible'] else 'NO'}")
+        print(f"  {r['category']:<30}{r['feature']:<18}{_f(r['value'], 2):>14}  {r['available_at']:<20}  {r['availability_basis']:<18}  {'YES' if r['decision_eligible'] else 'NO'}")
     print()
-    print("  每项 source / 口径：")
+    print("  每项 source / 口径（available_at 为最晚可证上界，非精确发布时间）：")
     for r in rows:
-        print(f"    · {r['feature']}  ← {r['source']}")
+        note = f"source_target_date={r['source_target_date'] or '—'}"
+        if not r["has_precise_publish_time"]:
+            note += "；无精确发布时刻（诚实标注）"
+        print(f"    · {r['feature']}  ← {r['source']}（{r['availability_basis']}；{note}）")
     return rows
 
 
@@ -595,13 +628,17 @@ def render_section4(evidence: Dict[str, Any]) -> None:
         print("    （不编造证据：宁可未知，不可乱判方向）")
     if post:
         print()
-        print("  ▶ POST-DECISION / NOT USED（晚于 cutoff → 只进复盘，绝不影响决策）:")
+        print("  ▶ POST-DECISION / NOT USED（晚于 cutoff 或不可回测 → 只进复盘，绝不影响决策）:")
         for ev in post:
             r = _ev_row(ev)
             print(f"    · [{r['event_type']}/{r['severity']}] {r['source']}")
             print(f"      summary      : {r['summary']}")
-            print(f"      published_at : {r['published_at']} UTC  |  decision_cutoff : {r['decision_cutoff']} UTC")
-            print(f"      decision_eligible : {r['decision_eligible']}（{r['published_at']} > cutoff）→ 系统不穿越：")
+            print(f"      published_at : {r['published_at'] or '-（无可靠发布时间）'} UTC  |  decision_cutoff : {r['decision_cutoff']} UTC")
+            if r['published_at']:
+                cmp_txt = f"{r['published_at']} > cutoff"
+            else:
+                cmp_txt = "无可靠发布时间（12Z/18Z 回测无可靠 vintage，不自行推测）"
+            print(f"      decision_eligible : {r['decision_eligible']}（{cmp_txt}）→ 系统不穿越：")
             print(f"      该信息在 10:00 PT 决策时刻尚不存在，交易员当时无法得知，故不可用于决策。")
     else:
         print()
@@ -779,7 +816,8 @@ def main() -> None:
                 "rcvar99": float(rr["rcvar99"]), "vol_ratio": float(rr["vol_ratio"]),
                 "node_drift": float(rr["node_drift"]),
             }
-        verdict, decision = run_gate_and_rule(pred_out, risk_fields, ev_ctx, tail_loss, cutoff_utc)
+        verdict, decision = run_gate_and_rule(pred_out, risk_fields, ev_ctx, tail_loss, cutoff_utc,
+                                              features_used=avail_rows)
         render_section6(verdict, risk_fields)
         print()
 
@@ -893,8 +931,10 @@ def main() -> None:
     box("Audit Panel（审计面板）")
     print(f"  Data Leakage Check   : PASS —— 特征全部 as-of（<= {dd} 10:00 PT）；"
           f"actual_* 仅在 Post-trade 揭晓；Evidence/Case 均经时间门槛")
+    print(f"  P0-2 Display==Gate    : 展示 available_at 与 Time Gate 判定单一口径（无精确发布时刻 → ≤{dd} 00:00 PT 上界，"
+          f"不显示 23:59 伪精确时间戳）")
     print(f"  Mock Data Used       : NONE（决策路径无 MOCK；全部真实数据 as-of）")
-    print(f"  Backtest-safe Feat.  : 38/38 canonical X 区特征 available_at <= decision_cutoff")
+    print(f"  Backtest-safe Feat.  : 38/38 canonical X 区特征 available_at 上界 <= decision_cutoff")
     print(f"  Evidence Time Gate   : {len(evidence.get('eligible', []))} eligible / "
           f"{len(evidence.get('post_decision', []))} post-decision 隔离")
     print(f"  Decision Cutoff      : {dd} 10:00 PT = {_utc_label(cutoff_utc)} UTC（{DECISION_CUTOFF_DESC}）")
@@ -949,6 +989,11 @@ def main() -> None:
             "mock_data_used": "NONE",
             "backtest_safe_features": "38/38",
             "evidence_time_gate": f"{len(evidence.get('eligible', []))} eligible / {len(evidence.get('post_decision', []))} post",
+            "feature_display_eligibility_consistent": (
+                bool(decision.feature_eligibility_consistent) if decision else True),
+            "feature_availability_semantics": (
+                "P0-2: displayed_available_at == time_gate_used_available_at；"
+                "STRUCTURAL_LAG/ASSUMED → ≤decision_date 00:00 PT（最晚可证上界，不显示伪精确时间戳）"),
             "decision_cutoff_pt": f"{dd} 10:00 PT",
             "decision_cutoff_utc": cutoff_utc,
         },

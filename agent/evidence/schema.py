@@ -20,10 +20,16 @@ As-of Decision-Time Evidence 硬约束（本次修正核心）：
 结构（在团队统一口径基础上增加时间字段）：
     {"evidence_id":"","event_type":"","region":"","affected_nodes":[],
      "event_start_time":"","event_end_time":"","severity":"",
-     "source":"","source_url":"","published_at":"","retrieved_at":"",
+     "source":"","source_url":"","published_at":"","available_at":"","retrieved_at":"",
      "decision_cutoff":"","decision_eligible":false,
      "summary":"","directional_effect":"SUPPORT_POSITIVE|SUPPORT_NEGATIVE|UNCERTAIN",
      "confidence":0.0}
+
+P0-1（GFS 单一事实来源）时间语义：
+  - available_at : 证据真正可用的时刻（= 数据层 AsOfRecord.available_at，
+                   Time Gate 判据；空串 = 无可靠 vintage → 不判定可用）。
+  - time_eligible: 优先以 available_at <= decision_cutoff 判定；available_at
+                   缺失时回退 published_at（兼容旧证据），绝不用 initialization_time。
 
 关键约束：
   - directional_effect 只能由已核实的真实数据源给出；LLM 猜测一律回退 UNCERTAIN。
@@ -81,6 +87,7 @@ EVIDENCE_KEYS: tuple = (
     "is_mock",
     "raw_source_id",
     "published_at",
+    "available_at",
     "retrieved_at",
     "target_time",
     "decision_cutoff",
@@ -161,11 +168,13 @@ class Evidence:
 
     时间字段含义：
       event_start_time / event_end_time : 事件本身发生的时段
-      published_at                      : 证据公开时间（核心：与 decision_cutoff 比较）
+      published_at                      : 证据公开时间（源方发布时刻估计）
+      available_at                      : 证据真正可用的时刻（Time Gate 判据；
+                                         空串 = 无可靠 vintage → 不可用）
       retrieved_at                      : Agent 检索时间（审计用）
       target_time                       : 该证据指向的交付时刻（UTC naive，可为空）
       decision_cutoff                   : 该证据对应的决策截止（D-1 日 10:00 PT）
-      decision_eligible                 : 程序计算 = (published_at <= decision_cutoff)
+      decision_eligible                 : 程序计算 = (available_at <= decision_cutoff)
 
     Provenance 字段（进入 Risk Gate / Rule Engine 前的可追溯性）：
       source / source_type / is_mock / raw_source_id / target_time /
@@ -186,6 +195,7 @@ class Evidence:
     is_mock: bool = False
     raw_source_id: str = ""
     published_at: str = ""
+    available_at: str = ""
     retrieved_at: str = ""
     target_time: str = ""
     decision_cutoff: str = ""
@@ -198,13 +208,20 @@ class Evidence:
     # -- 程序计算的时间门槛（As-of Decision-Time 硬约束）-------------------
     @property
     def time_eligible(self) -> bool:
-        """R1/R2 纯时间门槛：published_at <= decision_cutoff（程序计算）。
+        """R1/R2 纯时间门槛（程序计算，绝不由 LLM 判断）。
 
-        任一时间缺失 -> False（保守，宁保守不穿越）。绝不由 LLM 判断。
+        P0-1 修正：优先判 **available_at**（数据层 AsOfRecord 的 as-of 时点，
+        Time Gate 唯一判据）；available_at 缺失时回退 published_at（兼容旧证据），
+        绝不回退到 initialization_time。任一时间缺失 -> False（宁保守不穿越）。
         """
-        pub = parse_timestamp(self.published_at)
         cutoff = parse_timestamp(self.decision_cutoff)
-        if pub is None or cutoff is None:
+        if cutoff is None:
+            return False
+        avail = parse_timestamp(self.available_at)
+        if avail is not None:
+            return avail <= cutoff
+        pub = parse_timestamp(self.published_at)
+        if pub is None:
             return False
         try:
             return pub <= cutoff
@@ -260,6 +277,7 @@ class Evidence:
         self.is_mock = _coerce_bool(self.is_mock)
         self.raw_source_id = _coerce_str(self.raw_source_id)
         self.published_at = _coerce_str(self.published_at)
+        self.available_at = _coerce_str(self.available_at)
         self.retrieved_at = _coerce_str(self.retrieved_at)
         self.target_time = _coerce_str(self.target_time)
         self.decision_cutoff = _coerce_str(self.decision_cutoff)
@@ -294,6 +312,7 @@ class Evidence:
             "is_mock": bool(self.is_mock),
             "raw_source_id": self.raw_source_id,
             "published_at": self.published_at,
+            "available_at": self.available_at,
             "retrieved_at": self.retrieved_at,
             "target_time": self.target_time,
             "decision_cutoff": self.decision_cutoff,
@@ -325,6 +344,7 @@ def new_uncertain_evidence(
     source: str = "",
     source_url: str = "",
     published_at: str = "",
+    available_at: str = "",
     retrieved_at: str = "",
     decision_cutoff: str = "",
     summary: str = "暂无真实数据源：该证据当前无法核实，方向未知（UNCERTAIN）。",
@@ -344,6 +364,7 @@ def new_uncertain_evidence(
         is_mock=_coerce_bool(is_mock),
         raw_source_id=raw_source_id,
         published_at=published_at,
+        available_at=available_at,
         retrieved_at=retrieved_at,
         target_time=target_time,
         decision_cutoff=decision_cutoff,
@@ -369,6 +390,7 @@ def evidence_from_dict(raw: Dict[str, Any]) -> Evidence:
         is_mock=_coerce_bool(raw.get("is_mock", False)),
         raw_source_id=raw.get("raw_source_id", ""),
         published_at=raw.get("published_at", ""),
+        available_at=raw.get("available_at", ""),
         retrieved_at=raw.get("retrieved_at", ""),
         target_time=raw.get("target_time", ""),
         decision_cutoff=raw.get("decision_cutoff", ""),

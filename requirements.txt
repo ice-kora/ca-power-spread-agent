@@ -1,0 +1,33 @@
+# CAISO 价差交易 · V0.3.1 Web + LLM Agent MVP 依赖清单
+# ----------------------------------------------------------------
+# 安装：pip install -r requirements.txt
+# 版本下限为经验值（在当前项目测试通过的环境验证过）；如需固定可改为 == 精确版本。
+#
+# 注意：本项目读取 canonical.parquet / predictions_v2.csv 等已生成的 artifact，
+# 运行 Web/CLI 决策**不需要**重新训练模型，因此建模类依赖（lightgbm/catboost/
+# scikit-learn）仅在重新生成 artifact 时才需要；但保留它们以保证 `python model_v2.py`
+# 等脚本可一键复跑。
+
+# ---- Web / 服务 ----
+flask>=3.0
+
+# ---- 数据处理 ----
+pandas>=2.0
+numpy>=1.24
+pyarrow>=14.0          # canonical.parquet 读取
+openpyxl>=3.1.5        # 价格 xlsx 读取（pandas.read_excel 需要 ≥3.1.5）
+
+# ---- 建模（重新生成 artifact 时需要；运行决策不需要）----
+lightgbm>=4.0
+catboost>=1.2
+scikit-learn>=1.3
+joblib>=1.3
+matplotlib>=3.7        # 图表/报告生成
+
+# ---- HTTP（GFS 证据采集 + LLM 直连）----
+requests>=2.31
+httpx>=0.26
+
+# ---- LLM（可选；不装 SDK 时 llm_copilot 走 httpx/requests 直连）----
+# openai>=1.0        # OpenAI 兼容 provider（openai/deepseek）的官方 SDK（可选）
+# anthropic>=0.25    # Anthropic 官方 SDK（可选）

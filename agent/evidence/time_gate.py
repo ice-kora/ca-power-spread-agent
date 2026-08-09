@@ -25,14 +25,29 @@ Evidence Time Gate（V0.2 修正核心）：防止 Agent 信息穿越 + MOCK 硬
   若数据源无法提供历史发布时间（published_at 缺失或不可信），该证据
   在严格 historical as-of backtest 中应视为不可用（默认 FALSE），并标记
   NOT_BACKTEST_SAFE，不能用于回测。
+
+  # 特征级 Time Gate（Agent B P0-2）
+  特征（canonical X 区）的可用性由 feature_is_decision_eligible() 判定，与 UI 展示
+  共用**同一上界**（availability_basis / latest_possible_available_at）。
+  无精确发布时刻的滞后/历史特征 → STRUCTURAL_LAG + decision_date 00:00 PT（最晚可证上界），
+  UI 不显示虚假精确时间戳（如 23:59）。validate/assert_feature_eligibility_consistent 强制
+  铁律：displayed available_at > decision_cutoff ⇒ decision_eligible MUST NOT = TRUE。
 """
 
 from __future__ import annotations
 
 import copy
-from typing import List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from agent.evidence.schema import Evidence, evidence_from_dict, parse_timestamp
+from code.data_acquisition.schemas import (
+    AVAILABILITY_BASIS_KEY,
+    AVAILABILITY_BASIS_STATIC,
+    LATEST_POSSIBLE_AVAILABLE_AT_KEY,
+    feature_decision_eligible as _feature_decision_eligible,
+    latest_available_bound as _latest_available_bound,
+    structural_lag_available_bound as _structural_lag_available_bound,
+)
 
 
 def is_mock_evidence(ev) -> bool:
@@ -165,3 +180,83 @@ def assert_no_post_decision(evidences: Sequence[Evidence],
             "Evidence Time Gate: 检测到 %d 条 Post-decision 证据进入决策层，已拦截: %s"
             % (len(post), ids)
         )
+
+
+# ---------------------------------------------------------------------------
+# 特征级 Time Gate（Agent B · P0-2：展示口径 == 判定口径）
+# ---------------------------------------------------------------------------
+def feature_is_decision_eligible(feature_availability: Dict[str, Any],
+                                 decision_date: str,
+                                 decision_cutoff: Optional[str]) -> bool:
+    """特征级 Time Gate：与 UI 展示共用**同一上界**（schemas.feature_decision_eligible）。
+
+    铁律：displayed available_at（= latest_available_bound 同一上界）> decision_cutoff
+          ⇒ 本函数 MUST NOT 返回 True。
+    无精确发布时刻的滞后/历史特征以 availability_basis=STRUCTURAL_LAG、
+    latest_possible_available_at=decision_date 00:00 PT（最晚可证上界）判定。
+    """
+    return _feature_decision_eligible(feature_availability, decision_date, decision_cutoff)
+
+
+def feature_available_bound(feature_availability: Dict[str, Any],
+                            decision_date: str) -> Optional[str]:
+    """Time Gate 实际使用的 available_at 上界（UTC naive ISO），与 UI 展示完全一致。"""
+    return _latest_available_bound(feature_availability, decision_date)
+
+
+def structural_lag_available_bound(decision_date: str) -> Optional[str]:
+    """STRUCTURAL_LAG 特征的最晚可证可用上界 = decision_date 00:00 PT → UTC naive ISO。"""
+    return _structural_lag_available_bound(decision_date)
+
+
+def validate_feature_eligibility(
+    features_used: Sequence[Dict[str, Any]],
+    decision_cutoff: Optional[str] = None,
+) -> List[str]:
+    """硬规则校验（P0-2）：返回所有违规项（空列表 = 通过）。
+
+    硬规则：IF displayed available_at（上界）> decision_cutoff ⇒ decision_eligible MUST NOT = TRUE。
+    反之，只要 decision_eligible=True，其 available_at/latest_possible_available_at 上界必须
+    存在且 <= decision_cutoff（STATIC 特征无时间门槛，跳过）。
+    """
+    violations: List[str] = []
+    for i, f in enumerate(features_used or []):
+        if not isinstance(f, dict):
+            continue
+        eligible = bool(f.get("decision_eligible", False))
+        basis = str(f.get(AVAILABILITY_BASIS_KEY, "")).upper()
+        if basis == AVAILABILITY_BASIS_STATIC or not eligible:
+            continue  # STATIC 无时间门槛；eligible=False 恒允许
+        bound = (f.get("latest_possible_available_at")
+                 or f.get("available_at"))
+        cutoff = f.get("decision_cutoff") or decision_cutoff
+        name = f.get("feature", f"features_used[{i}]")
+        if not _time_bound_ok(bound, cutoff):
+            violations.append(
+                f"P0-2 硬规则: feature={name} decision_eligible=True 但其 displayed available_at "
+                f"({bound!r}) 不存在或晚于 decision_cutoff ({cutoff!r}) —— 展示与 Time Gate 不一致")
+    return violations
+
+
+def assert_feature_eligibility_consistent(
+    features_used: Sequence[Dict[str, Any]],
+    decision_cutoff: Optional[str] = None,
+) -> None:
+    """防御性断言：特征展示与 Time Gate 判定不一致时直接抛错（P0-2 铁律）。"""
+    violations = validate_feature_eligibility(features_used, decision_cutoff)
+    if violations:
+        raise RuntimeError(
+            "Feature Time Gate: 展示 available_at 与 eligibility 判定不一致，已拦截:\n  "
+            + "\n  ".join(violations))
+
+
+def _time_bound_ok(bound: Optional[str], cutoff: Optional[str]) -> bool:
+    """上界存在、可解析且 <= cutoff（缺一即 False，宁保守不穿越）。"""
+    b = parse_timestamp(bound)
+    c = parse_timestamp(cutoff)
+    if b is None or c is None:
+        return False
+    try:
+        return b <= c
+    except Exception:
+        return False

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How It Works · CAISO Trading Decision Agent</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='mvp.css') }}">
+</head>
+<body>
+<div class="page">
+  <h1>How It Works（工作原理）</h1>
+  <div class="sub">一笔交易从决策到复盘的完整生命周期。所有步骤可审计、可解释、不穿越。</div>
+
+  <h2>决策流水线</h2>
+  <div class="flow">
+    <div class="step hl">10:00 PT cutoff</div><span class="arrow">→</span>
+    <div class="step">Only available info<br>（as-of 特征）</div><span class="arrow">→</span>
+    <div class="step">Predict<br>（模型预测量）</div><span class="arrow">→</span>
+    <div class="step">Evidence<br>（Time Gate 过滤）</div><span class="arrow">→</span>
+    <div class="step">Risk Gate<br>（PASS/WARNING/REJECT）</div><span class="arrow">→</span>
+    <div class="step">Rule Engine<br>（R-A~R-I）</div><span class="arrow">→</span>
+    <div class="step hl">BUY / SELL / NO_TRADE</div><span class="arrow">→</span>
+    <div class="step">Human Review<br>（LOCK）</div><span class="arrow">→</span>
+    <div class="step">Reveal Actual<br>（REVEAL）</div><span class="arrow">→</span>
+    <div class="step">PnL<br>（1 MWh/仓）</div><span class="arrow">→</span>
+    <div class="step">Post-trade Review<br>（结构化复盘）</div>
+  </div>
+
+  <h2>交易语义（Return = DA − RTPD，$/MWh）</h2>
+  <div class="sem-grid">
+    <div class="item"><div class="t SELL">SELL_DA</div>
+      <div>预期 Return &gt; 0 → 卖 DA、买 RT 平仓。<br>PnL = DA − RTPD = actual_return</div>
+    </div>
+    <div class="item"><div class="t BUY">BUY_DA</div>
+      <div>预期 Return &lt; 0 → 买 DA、卖 RT 平仓。<br>PnL = RTPD − DA = −actual_return</div>
+    </div>
+    <div class="item"><div class="t NO">NO_TRADE</div>
+      <div>信号弱 / 风控拒绝 / 数据缺失 → 不建仓。<br>PnL = 0（但可能承担机会成本或避免亏损）</div>
+    </div>
+  </div>
+  <div class="muted">1 MWh/仓。实际价格（actual_*）在 LOCK 之前绝不显示，只在 Post-trade 揭晓用于复盘，绝不回灌决策。</div>
+
+  <h2>为什么这是"Agent"而不是一张报表</h2>
+  <ul>
+    <li><b>Agent Evidence 采集</b>：决策时点自动拉取真实外部证据（GFS 历史预报），并经 <b>Evidence Time Gate</b> 程序裁决——晚于 10:00 PT cutoff 的证据被隔离，<b>只进复盘，绝不进入决策</b>。</li>
+    <li><b>Case Retrieval（as-of）</b>：只检索 case_available_at ≤ 决策时点的已结算案例，防 Case 穿越。</li>
+    <li><b>白盒推导链</b>：Model Opinion → Evidence → Risk Gate → Rule Engine → Final，每一步有 reason_code 与业务翻译。</li>
+    <li><b>Ask Trading Agent</b>：自然语言追问决策，LLM 通过 6 个结构化 Tool（get_decision / get_feature_explanation / get_evidence / get_similar_cases / get_data_provenance / get_post_trade_review）获取事实并展示 Agent Trace。</li>
+    <li><b>不造假</b>：决策路径无 MOCK；无真实证据时诚实显示 "NO ELIGIBLE EXTERNAL EVIDENCE"，宁可知晓未知，不可编造方向。</li>
+  </ul>
+
+  <h2>Rule Engine 规则表</h2>
+  <table>
+    <thead><tr><th>规则</th><th>条件</th><th>决策</th></tr></thead>
+    <tbody>
+      <tr><td>R-A</td><td>RiskGate == REJECT</td><td>NO_TRADE（RISK_GATE_REJECTED）</td></tr>
+      <tr><td>R-B</td><td>expected_return / confidence 缺失</td><td>NO_TRADE（DATA_MISSING）</td></tr>
+      <tr><td>R-C</td><td>|expected_return| &lt; min_spread（5）</td><td>NO_TRADE（EXPECTED_RETURN_TOO_SMALL）</td></tr>
+      <tr><td>R-D</td><td>model_signal_strength &lt; min_confidence（0.20）</td><td>NO_TRADE（LOW_CONFIDENCE）</td></tr>
+      <tr><td>R-E</td><td>eligible 证据方向冲突</td><td>NO_TRADE（EVIDENCE_CONFLICT）</td></tr>
+      <tr><td>R-F</td><td>RiskGate WARNING 且配置升级拦截</td><td>NO_TRADE（RISK_GATE_WARNING_ESCALATED）</td></tr>
+      <tr><td>R-G</td><td>expected_return &gt; 0</td><td>SELL_DA（EXPECTED_RETURN_POSITIVE）</td></tr>
+      <tr><td>R-H</td><td>expected_return &lt; 0</td><td>BUY_DA（EXPECTED_RETURN_NEGATIVE）</td></tr>
+      <tr><td>R-I</td><td>expected_return == 0 / 无方向</td><td>NO_TRADE（NO_CLEAR_DIRECTION）</td></tr>
+    </tbody>
+  </table>
+
+  <h2>诚实边界</h2>
+  <div class="notice"><span class="tag">重要</span>
+    <p><b>Signal / Strategy MVP, Not Full CAISO Settlement Simulator.</b>
+    MODEL SIGNAL IS EXPERIMENTAL / CURRENT ALPHA = WEAK / MVP ≠ 已验证盈利系统。
+    无 BUY_DA 放行真实例（test 窗口 BUY 被 Risk Gate 系统性拒绝）——系统保守是设计而非遗漏。
+    PnL 按 1 MWh/仓 简化；结算仅覆盖 DAM/RTPD 价差，不含 FMM/阻塞/费用等完整结算。</p>
+  </div>
+
+  <div class="back"><a href="/">← 返回 Decision Workspace</a></div>
+</div>
+</body>
+</html>

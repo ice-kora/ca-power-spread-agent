@@ -44,8 +44,12 @@ from agent.evidence.schema import (
 #: 接入真实源时在此登记，并确保 fetch_evidence 调用其回调。
 FETCHER_REGISTRY: Dict[str, Optional[str]] = {
     "WEATHER_FORECAST": "agent.evidence.gfs_forecast:fetch_gfs_weather_evidence",
-    #   ↑ 已接入（2026-08-09）：NCEP GFS 历史预报档案（Open-Meteo Single Runs API）。
-    #     对 decision_date 返回 D+1 天气预报 Evidence（as-of，published_at=12Z run 时间）。
+    #   ↑ 已接入（P0-1 统一源）：NCEP GFS 历史预报档案（Open-Meteo Single Runs）。
+    #     对 decision_date 返回 D+1 天气预报 Evidence（as-of）。
+    #     单一事实来源 = code/data_acquisition/weather_gfs.py（GFSWeatherCollector）；
+    #     gfs_forecast 仅为 Adapter，时间字段 / decision_eligible 全部取自 AsOfRecord。
+    #     默认 cycle = weather_gfs.DEFAULT_CYCLE（06Z，可严格回测）；12Z/18Z 回测
+    #     eligible=FALSE（除非 PRODUCTION 在 cutoff 前真实拉到，记 retrieved_at）。
     "RENEWABLE_GENERATION": None,   # TODO: 接入 CA-ISO 可再生能源出力（最高优先）
     "LOAD_FORECAST_REVISION": None,  # TODO: 接入负荷预测实时修正
     "OUTAGE_AND_CONSTRAINT": None,   # TODO: 接入机组停运/输电阻塞

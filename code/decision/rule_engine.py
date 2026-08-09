@@ -44,6 +44,10 @@ from code.risk_gate.evidence_adapter import (
     filter_eligible_evidence,
 )
 from code.risk_gate.gate import GateVerdict, RiskGate
+from agent.evidence.time_gate import (
+    assert_feature_eligibility_consistent,
+    validate_feature_eligibility,
+)
 from code.market_rules import (  # noqa: E402
     CURRENT_MARKET_RULE_VERSION,
     MARKET_RULE_VERSIONS,
@@ -87,12 +91,29 @@ class Decision:
     risk_verdict: Optional[str] = None             # Risk Gate 判定 PASS/WARNING/REJECT
     risk_reasons: List[str] = field(default_factory=list)   # Gate 的 reason_code
     evidence_used: Dict[str, Any] = field(default_factory=dict)  # eligible 证据汇总
+    features_used: List[Dict[str, Any]] = field(default_factory=list)  # 决策展示的特征（P0-2）
+    feature_eligibility_consistent: bool = True    # P0-2：展示 available_at 与 Time Gate 一致
     version: str = "0.2"
     market_rule_version: str = CURRENT_MARKET_RULE_VERSION  # 决策上下文规则版本标记
 
     @property
     def is_trade(self) -> bool:
         return self.decision in ("BUY_DA", "SELL_DA")
+
+    def feature_eligibility_violations(self,
+                                       decision_cutoff: Optional[str] = None) -> List[str]:
+        """P0-2 硬规则复算：displayed available_at > cutoff ⇒ eligible MUST NOT = TRUE。"""
+        cutoff = decision_cutoff or self.decision_cutoff
+        return validate_feature_eligibility(self.features_used, cutoff)
+
+    @property
+    def decision_cutoff(self) -> Optional[str]:
+        """从 features_used 推断 decision_cutoff（有则取第一个非空）。"""
+        for f in self.features_used:
+            c = f.get("decision_cutoff")
+            if c:
+                return c
+        return None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -105,6 +126,8 @@ class Decision:
             "risk_verdict": self.risk_verdict,
             "risk_reasons": list(self.risk_reasons),
             "evidence_used": dict(self.evidence_used),
+            "features_used": list(self.features_used),
+            "feature_eligibility_consistent": bool(self.feature_eligibility_consistent),
             "version": self.version,
             "market_rule_version": normalize_market_rule_version(self.market_rule_version),
         }
@@ -131,6 +154,7 @@ class RuleEngine:
         gate_verdict: Optional[GateVerdict] = None,
         evidences: Sequence[Any] = (),
         decision_cutoff: Optional[str] = None,
+        features_used: Sequence[Dict[str, Any]] = (),
     ) -> Decision:
         """组合 Predictive Model + Risk Gate + Evidence → 三态建议。
 
@@ -140,6 +164,9 @@ class RuleEngine:
             gate_verdict: Risk Gate 判定；None 时由本引擎内部调用 RiskGate。
             evidences: 原始证据列表（本引擎内部先过 Evidence Time Gate 过滤）。
             decision_cutoff: 决策截止（D-1 10:00 PT）；缺省用证据自带。
+            features_used: 决策展示的特征行（P0-2）；每条须携带 availability_basis /
+                           latest_possible_available_at / decision_eligible / decision_cutoff，
+                           本引擎强制"展示口径 == Time Gate 判定口径"，不一致直接抛错。
 
         Returns:
             Decision。
@@ -147,6 +174,13 @@ class RuleEngine:
         pred = dict(prediction)
         direction = pred.get("direction") or direction_from_expected_return(pred.get("expected_return"))
         pred["direction"] = direction
+
+        # ---- Feature Time Gate（P0-2）：展示 available_at == 判定 available_at ----
+        features_used_list = list(features_used or [])
+        feat_violations = validate_feature_eligibility(features_used_list, decision_cutoff)
+        if feat_violations:
+            assert_feature_eligibility_consistent(features_used_list, decision_cutoff)  # 抛错
+        feat_consistent = not feat_violations
 
         # ---- Evidence Time Gate：只放行 Pre-decision Evidence ----
         eligible, post = filter_eligible_evidence(list(evidences), decision_cutoff)
@@ -185,6 +219,8 @@ class RuleEngine:
                 risk_verdict=risk_decision,
                 risk_reasons=risk_reasons,
                 evidence_used=ev_ctx,
+                features_used=features_used_list,
+                feature_eligibility_consistent=feat_consistent,
                 version=self.cfg.version,
                 market_rule_version=self.cfg.market_rule_version,
             )
@@ -238,6 +274,8 @@ class RuleEngine:
                 risk_verdict=risk_decision,
                 risk_reasons=risk_reasons,
                 evidence_used=ev_ctx,
+                features_used=features_used_list,
+                feature_eligibility_consistent=feat_consistent,
                 version=self.cfg.version,
                 market_rule_version=self.cfg.market_rule_version,
             )
@@ -252,6 +290,8 @@ class RuleEngine:
                 risk_verdict=risk_decision,
                 risk_reasons=risk_reasons,
                 evidence_used=ev_ctx,
+                features_used=features_used_list,
+                feature_eligibility_consistent=feat_consistent,
                 version=self.cfg.version,
                 market_rule_version=self.cfg.market_rule_version,
             )

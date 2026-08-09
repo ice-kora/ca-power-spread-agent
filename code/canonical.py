@@ -48,9 +48,29 @@ features.parquet 保留作对比）。修复 2026-08-07 审计确认的全部数
 """
 import os
 import json
+import sys
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from pandas.tseries.holiday import USFederalHolidayCalendar
+
+# 保证直接 `python code/canonical.py` 也能导入 code.*（可用性语义单一来源）
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from code.data_acquisition.schemas import (  # noqa: E402
+    AVAILABILITY_BASIS_ASSUMED_AVAILABLE,
+    AVAILABILITY_BASIS_KEY,
+    AVAILABILITY_BASIS_STATIC,
+    AVAILABILITY_BASIS_STRUCTURAL_LAG,
+    BOUND_RULE_DECISION_DATE_00_PT,
+    HAS_PRECISE_PUBLISH_TIME_KEY,
+    LATEST_POSSIBLE_AVAILABLE_AT_KEY,
+    SOURCE_TARGET_DATE_KEY,
+    feature_decision_eligible,
+    make_decision_cutoff,
+)
 
 # ---------------------------------------------------------------------------
 # 路径与常量
@@ -147,28 +167,89 @@ PEER_FEATURES = {"peer_spread_lag1", "peer_da_lag1", "peer_rtpd_lag1"}
 
 
 def availability_map():
-    """返回 {feature: {"available_at": 描述, "status": CONFIRMED/ASSUMED_AVAILABLE}}。"""
+    """返回 {feature: {available_at, status, availability_basis, source_target_date,
+                      latest_possible_available_at, has_precise_publish_time}}。
+
+    Agent B P0-2 统一口径（展示 == Time Gate 判定）：
+      - STATIC 特征              : availability_basis=STATIC，无时间门槛，恒可用。
+      - 滞后/滚动/日级/历史特征   : availability_basis=STRUCTURAL_LAG，数据来自**已完整交付的
+                                  历史日**（source_target_date = target_date − 2 或更早），
+                                  **无精确发布时刻**；最晚可证可用上界 latest_possible_available_at
+                                  = decision_date 00:00 PT（Time Gate 与 UI 展示共用同一上界）。
+      - 2DA 负荷预报              : availability_basis=ASSUMED_AVAILABLE，按源约定提前 2 日发布，
+                                  无精确发布时刻，同样以 decision_date 00:00 PT 为最晚可证上界。
+
+    本 map 是 UI 展示与 Time Gate 判定的**单一事实来源**；禁止在展示层另造"23:59"之类的
+    精确时刻（没有精确发布时间就必须用 STRUCTURAL_LAG / ASSUMED_AVAILABLE 表达上界）。
+    """
+    lag_meta = {
+        AVAILABILITY_BASIS_KEY: AVAILABILITY_BASIS_STRUCTURAL_LAG,
+        LATEST_POSSIBLE_AVAILABLE_AT_KEY: BOUND_RULE_DECISION_DATE_00_PT,
+        HAS_PRECISE_PUBLISH_TIME_KEY: False,
+    }
     m = {}
     for f in STATIC_FEATURES:
-        m[f] = {"available_at": "已知（静态/日历）", "status": "CONFIRMED"}
+        m[f] = {
+            "available_at": "已知（静态/日历）",
+            "status": "CONFIRMED",
+            AVAILABILITY_BASIS_KEY: AVAILABILITY_BASIS_STATIC,
+            SOURCE_TARGET_DATE_KEY: "",
+            LATEST_POSSIBLE_AVAILABLE_AT_KEY: "",
+            HAS_PRECISE_PUBLISH_TIME_KEY: False,
+        }
     for f in PRICE_LAG_FEATURES:
         k = int(f.rsplit("_lag", 1)[1])
-        m[f] = {"available_at": f"target_date - {k+1}（交付日整日完整）", "status": "CONFIRMED"}
+        m[f] = {
+            "available_at": f"target_date - {k+1}（交付日整日完整）",
+            "status": "CONFIRMED",
+            SOURCE_TARGET_DATE_KEY: f"target_date - {k+1}",
+            **lag_meta,
+        }
     for f in ROLLING_FEATURES:
         w = int(f.split("mean")[1] if "mean" in f else f.split("std")[1])
-        m[f] = {"available_at": f"target_date-2 .. target_date-{w+1}（同 hour 共 {w} 天完整）",
-                "status": "CONFIRMED"}
+        m[f] = {
+            "available_at": f"target_date-2 .. target_date-{w+1}（同 hour 共 {w} 天完整）",
+            "status": "CONFIRMED",
+            SOURCE_TARGET_DATE_KEY: f"target_date-2 .. target_date-{w+1}",
+            **lag_meta,
+        }
     for f in DAY_LEVEL_FEATURES:
-        m[f] = {"available_at": "target_date - 2（当天 24h 完整）", "status": "CONFIRMED"}
+        m[f] = {
+            "available_at": "target_date - 2（当天 24h 完整）",
+            "status": "CONFIRMED",
+            SOURCE_TARGET_DATE_KEY: "target_date - 2",
+            **lag_meta,
+        }
     for f in LOAD_HIST_FEATURES:
-        m[f] = {"available_at": "target_date - 2（当天实际负荷完整）", "status": "CONFIRMED"}
+        m[f] = {
+            "available_at": "target_date - 2（当天实际负荷完整）",
+            "status": "CONFIRMED",
+            SOURCE_TARGET_DATE_KEY: "target_date - 2",
+            **lag_meta,
+        }
     for f in WEATHER_HIST_FEATURES:
-        m[f] = {"available_at": "target_date - 2（当天天气完整）", "status": "CONFIRMED"}
+        m[f] = {
+            "available_at": "target_date - 2（当天天气完整）",
+            "status": "CONFIRMED",
+            SOURCE_TARGET_DATE_KEY: "target_date - 2",
+            **lag_meta,
+        }
     for f in PEER_FEATURES:
-        m[f] = {"available_at": "target_date - 2（peer 交付日完整）", "status": "CONFIRMED"}
+        m[f] = {
+            "available_at": "target_date - 2（peer 交付日完整）",
+            "status": "CONFIRMED",
+            SOURCE_TARGET_DATE_KEY: "target_date - 2",
+            **lag_meta,
+        }
     for f in FORECAST_FEATURES:
-        m[f] = {"available_at": "target_date - 2（2DA 负荷预测，预计提前 2 日发布）",
-                "status": "ASSUMED_AVAILABLE"}
+        m[f] = {
+            "available_at": "target_date - 2（2DA 负荷预测，预计提前 2 日发布）",
+            "status": "ASSUMED_AVAILABLE",
+            AVAILABILITY_BASIS_KEY: AVAILABILITY_BASIS_ASSUMED_AVAILABLE,
+            SOURCE_TARGET_DATE_KEY: "target_date - 2",
+            LATEST_POSSIBLE_AVAILABLE_AT_KEY: BOUND_RULE_DECISION_DATE_00_PT,
+            HAS_PRECISE_PUBLISH_TIME_KEY: False,
+        }
     return m
 
 
@@ -484,6 +565,19 @@ def verify(canon, master):
     nlt = int((cmp["n_canon"] < 24).sum())
     print("[8] 每 (node,target_date) 行数 == master 有效价格小时数（24=%d 组, <24=%d 组，无幽灵行）: PASS"
           % (n24, nlt))
+
+    # 9) P0-2 统一口径：availability_map 全部 X 特征经 feature gate 均 decision_eligible
+    #    （展示 available_at 上界 == Time Gate 判定口径；无精确发布时刻 → 用最晚可证上界）
+    sample_dds = pd.to_datetime(canon["decision_date"].unique()[:5])
+    for dd in sample_dds:
+        dstr = str(dd.date())
+        cutoff = make_decision_cutoff(dstr) or ""
+        for f in X_COLUMNS:
+            assert feature_decision_eligible(av[f], dstr, cutoff), (
+                "P0-2 特征 %s @ %s 判定不可用（displayed available_at 与 Time Gate 不一致）"
+                % (f, dstr))
+    print("[9] P0-2 统一口径：%d 个 X 特征 available_at 上界全部 <= decision_cutoff"
+          "（STRUCTURAL_LAG/ASSUMED → decision_date 00:00 PT 上界）: PASS" % len(X_COLUMNS))
     return True
 
 
@@ -527,6 +621,14 @@ def build_schema(df, n_nan_label_dropped, master):
         },
         "disabled_features": DISABLED_FEATURES,
         "feature_availability": av,
+        "availability_semantics": {
+            "unified_rule": (
+                "displayed_available_at == time_gate_used_available_at（单一来源：本 map）；"
+                "滞后/历史特征无精确发布时刻 → availability_basis=STRUCTURAL_LAG，"
+                "latest_possible_available_at = decision_date 00:00 PT（最晚可证上界，非编造时刻）；"
+                "2DA 负荷预报 → ASSUMED_AVAILABLE，同样以上界为准；UI 不得显示虚假精确时间戳。"),
+            "bound_rule_decision_date_00_pt": BOUND_RULE_DECISION_DATE_00_PT,
+        },
         "decision_cutoff": DECISION_CUTOFF_DESC,
         "lag_convention": (
             "lag1 -> target_date-2, lag2 -> target_date-3, lag7 -> target_date-8; "
@@ -554,11 +656,14 @@ def write_availability_matrix(schema):
             schema["generated_at"], schema["feature_version"], schema["generated_by"]),
         "> 行语义：一行 = (node, target_date, hour)；决策时点 = decision_date = target_date-1 的 10:00 前。",
         "> **铁律**：任何特征若 `available_at > decision_cutoff` 禁止进入训练/推理；UNKNOWN 未确认前默认禁用。",
+        "> **P0-2 统一口径**：displayed_available_at == time_gate_used_available_at；无精确发布时刻的滞后/历史特征",
+        "> 一律以 `availability_basis=STRUCTURAL_LAG`、`latest_possible_available_at=decision_date 00:00 PT`（最晚可证",
+        "> 上界）表达，UI 不显示虚假精确时间戳（如 23:59）。",
         "",
         "## X 特征（决策时点可见）",
         "",
-        "| 特征 | 类别 | available_at（相对 target_date） | 状态 |",
-        "|---|---|---|---|",
+        "| 特征 | 类别 | available_at（相对 target_date） | 状态 | availability_basis | latest_possible_available_at |",
+        "|---|---|---|---|---|---|",
     ]
     cat_of = {}
     for f in X_COLUMNS:
@@ -582,7 +687,10 @@ def write_availability_matrix(schema):
             cat_of[f] = "?"
     for f in X_COLUMNS:
         m = schema["feature_availability"][f]
-        lines.append("| %s | %s | %s | %s |" % (f, cat_of[f], m["available_at"], m["status"]))
+        basis = m.get("availability_basis", "UNKNOWN")
+        latest = m.get("latest_possible_available_at", "") or "—"
+        lines.append("| %s | %s | %s | %s | %s | %s |" % (
+            f, cat_of[f], m["available_at"], m["status"], basis, latest))
     lines += [
         "",
         "## 默认禁用特征（UNKNOWN / 穿越风险，保守模式）",

@@ -88,6 +88,42 @@ MODE_PRODUCTION = "PRODUCTION"
 MODES: tuple = (MODE_BACKTEST, MODE_PRODUCTION)
 
 # ---------------------------------------------------------------------------
+# 特征可用性语义（Agent B · P0-2：展示口径 == Time Gate 判定口径，单一事实来源）
+# ---------------------------------------------------------------------------
+#: availability_basis 允许值
+#:   STATIC               静态/日历特征（node/zone/hour/dow/month/holiday/solar_flag）—— 无时间门槛，恒可用
+#:   STRUCTURAL_LAG       滞后/滚动/日级/历史特征 —— 数据来自**已完整交付的历史日**
+#:                        （source_target_date = target_date − 2 或更早），**无精确发布时刻**；
+#:                        统一以 latest_possible_available_at = decision_date 00:00 PT 为最晚可证上界。
+#:   KNOWN_PUBLICATION    有精确发布时间（available_at = published_at 为真实时刻）
+#:   ASSUMED_AVAILABLE    按源约定假定决策时点可得（如 2DA 负荷预报提前 2 日发布），无精确发布时刻
+#:   UNKNOWN              无法归类 → 保守判不可用
+AVAILABILITY_BASIS_STATIC = "STATIC"
+AVAILABILITY_BASIS_STRUCTURAL_LAG = "STRUCTURAL_LAG"
+AVAILABILITY_BASIS_KNOWN_PUBLICATION = "KNOWN_PUBLICATION"
+AVAILABILITY_BASIS_ASSUMED_AVAILABLE = "ASSUMED_AVAILABLE"
+AVAILABILITY_BASIS_UNKNOWN = "UNKNOWN"
+AVAILABILITY_BASIS_VALUES: tuple = (
+    AVAILABILITY_BASIS_STATIC,
+    AVAILABILITY_BASIS_STRUCTURAL_LAG,
+    AVAILABILITY_BASIS_KNOWN_PUBLICATION,
+    AVAILABILITY_BASIS_ASSUMED_AVAILABLE,
+    AVAILABILITY_BASIS_UNKNOWN,
+)
+
+#: 统一字段名（canonical availability_map / feature_snapshot / UI / Time Gate 共用）
+AVAILABILITY_BASIS_KEY = "availability_basis"
+SOURCE_TARGET_DATE_KEY = "source_target_date"
+LATEST_POSSIBLE_AVAILABLE_AT_KEY = "latest_possible_available_at"
+HAS_PRECISE_PUBLISH_TIME_KEY = "has_precise_publish_time"
+
+#: STRUCTURAL_LAG / ASSUMED_AVAILABLE 的统一"最晚可证可用上界"规则。
+#: 滞后特征取自已完整交付的历史日（target_date − 2 = decision_date − 1），该日 H24 结算于
+#: decision_date 00:00 PT 完成，故整日数据最晚于此刻完整 —— 这是**可证明的保守上界**，
+#: 不是编造的精确发布时间；UI 不得把该上界当成"精确发布时刻"展示。
+BOUND_RULE_DECISION_DATE_00_PT = "decision_date 00:00 PT"
+
+# ---------------------------------------------------------------------------
 # Provenance：source_type 枚举（任何进入模型/Risk Gate 的字段都要可追溯来源类型）
 # ---------------------------------------------------------------------------
 #: source_type 允许值（单一事实来源）。`source` 是"具体源标识"（如
@@ -276,6 +312,93 @@ def lead_hours_of(target_time: Any, available_at: Any) -> Optional[float]:
     if t is None or a is None:
         return None
     return round((t - a).total_seconds() / 3600.0, 3)
+
+
+# ---------------------------------------------------------------------------
+# 特征可用性语义函数（Agent B · P0-2：展示 == 判定，禁止另造精确时刻）
+# ---------------------------------------------------------------------------
+def structural_lag_available_bound(decision_date: str) -> Optional[str]:
+    """STRUCTURAL_LAG 特征的最晚可证可用上界 = decision_date 00:00 PT → UTC naive ISO。
+
+    滞后特征取自已完整交付的历史日（source day = target_date − 2 = decision_date − 1）。
+    该日 H24 的 RTPD 结算于午夜（decision_date 00:00 PT）完成，故整日数据最晚于此刻完整。
+    这是**可证明的保守上界**（真实可用只会更早，不会更晚），**不是编造的精确发布时间**。
+    Time Gate 与 UI 展示都必须以该上界为准，禁止另造"23:59"之类的精确时刻。
+    """
+    if not str(decision_date).strip():
+        return None
+    return pt_naive_to_utc_naive(f"{str(decision_date)[:10]}T00:00:00")
+
+
+def latest_available_bound(feature_availability: Dict[str, Any],
+                           decision_date: str) -> Optional[str]:
+    """解析某特征"最晚可证可用上界"（UTC naive ISO）—— Time Gate 与 UI 共用**同一个值**。
+
+    依据 availability_basis：
+      STATIC            → None（静态/日历特征恒可用，无时间门槛）
+      STRUCTURAL_LAG    → structural_lag_available_bound(decision_date)
+      ASSUMED_AVAILABLE → 按 latest_possible_available_at 规则解析
+                          （本项目统一为 BOUND_RULE_DECISION_DATE_00_PT）
+      KNOWN_PUBLICATION → 解析 available_at（有精确发布时间）
+      UNKNOWN / 缺失    → 尝试解析 latest_possible_available_at；否则 None（保守判不可用）
+
+    无法解析 → None ⇒ feature_decision_eligible = False（宁保守不穿越）。
+    """
+    basis = _coerce_str(feature_availability.get(AVAILABILITY_BASIS_KEY))
+    if basis == AVAILABILITY_BASIS_STATIC:
+        return None
+    if basis == AVAILABILITY_BASIS_STRUCTURAL_LAG:
+        return structural_lag_available_bound(decision_date)
+    if basis == AVAILABILITY_BASIS_KNOWN_PUBLICATION:
+        return _fmt(parse_timestamp(feature_availability.get("available_at")))
+    rule = _coerce_str(feature_availability.get(LATEST_POSSIBLE_AVAILABLE_AT_KEY))
+    if rule == BOUND_RULE_DECISION_DATE_00_PT:
+        return structural_lag_available_bound(decision_date)
+    return _fmt(parse_timestamp(rule))
+
+
+def feature_decision_eligible(feature_availability: Dict[str, Any],
+                              decision_date: str,
+                              decision_cutoff: Optional[str]) -> bool:
+    """特征级 Time Gate（展示口径 == 判定口径）。
+
+    铁律：displayed_available_at（= latest_available_bound 同一上界）> decision_cutoff
+          ⇒ decision_eligible MUST NOT = TRUE。
+    STATIC 特征无时间门槛，恒 TRUE；任一时间缺失/不可解析 → FALSE（宁保守不穿越）。
+    """
+    basis = _coerce_str(feature_availability.get(AVAILABILITY_BASIS_KEY))
+    if basis == AVAILABILITY_BASIS_STATIC:
+        return True
+    bound = latest_available_bound(feature_availability, decision_date)
+    return _time_eligible_of(bound, decision_cutoff)
+
+
+def feature_available_at_display(feature_availability: Dict[str, Any],
+                                 decision_date: str) -> str:
+    """UI 展示的 available_at 字符串（表达与 Time Gate 判定的**同一个上界**，紧凑版）。
+
+    - STATIC            → "静态/日历（恒可用）"
+    - STRUCTURAL_LAG    → "≤ {decision_date} 00:00 PT"（最晚可证上界，非编造精确时刻）
+    - ASSUMED_AVAILABLE → "≤ {decision_date} 00:00 PT（assumed）"
+    - KNOWN_PUBLICATION → "{available_at}"（有精确发布时间）
+    - UNKNOWN / 缺字段  → "UNKNOWN（无可用上界 → 判不可用）"
+
+    完整注解（basis / source_target_date / 无精确发布时刻）由调用方通过结构化字段补充。
+    """
+    basis = _coerce_str(feature_availability.get(AVAILABILITY_BASIS_KEY))
+    dd = str(decision_date)[:10]
+    if basis == AVAILABILITY_BASIS_STATIC:
+        return "静态/日历（恒可用）"
+    if basis == AVAILABILITY_BASIS_STRUCTURAL_LAG:
+        return f"≤ {dd} 00:00 PT"
+    if basis == AVAILABILITY_BASIS_ASSUMED_AVAILABLE:
+        return f"≤ {dd} 00:00 PT（assumed）"
+    if basis == AVAILABILITY_BASIS_KNOWN_PUBLICATION:
+        return f"{_coerce_str(feature_availability.get('available_at'))}"
+    rule = _coerce_str(feature_availability.get(LATEST_POSSIBLE_AVAILABLE_AT_KEY))
+    if rule == BOUND_RULE_DECISION_DATE_00_PT:
+        return f"≤ {dd} 00:00 PT"
+    return rule or "UNKNOWN（无可用上界 → 判不可用）"
 
 
 # ---------------------------------------------------------------------------

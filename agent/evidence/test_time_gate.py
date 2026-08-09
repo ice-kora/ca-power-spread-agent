@@ -34,6 +34,11 @@ from agent.evidence.time_gate import (  # noqa: E402
     split_eligible,
     split_by_eligibility,
     assert_no_post_decision,
+    assert_feature_eligibility_consistent,
+    feature_available_bound,
+    feature_is_decision_eligible,
+    structural_lag_available_bound,
+    validate_feature_eligibility,
 )
 
 CUTOFF_10 = "2025-07-09T10:00:00"  # D-1 日 10:00 PT（官方 BPM bid close）
@@ -215,6 +220,74 @@ class TestMockHardIsolation(unittest.TestCase):
         errs = validate_evidence(bad)
         self.assertTrue(any("硬规则 R7" in e for e in errs), errs)
         self.assertTrue(any("漂移" in e for e in errs), errs)
+
+
+class TestFeatureTimeGate(unittest.TestCase):
+    """Agent B P0-2：特征级 Time Gate 展示==判定 + 硬规则。"""
+
+    CUTOFF = "2026-07-09T17:00:00"   # 2026-07-09 10:00 PT → UTC（PDT）
+
+    def _feat(self, eligible=True, bound=None, basis="STRUCTURAL_LAG", cutoff=None):
+        bound_val = "2026-07-09T00:00:00" if bound is None else bound
+        return {
+            "feature": "spread_lag1",
+            "available_at": bound_val,
+            "latest_possible_available_at": bound_val,
+            "availability_basis": basis,
+            "decision_cutoff": cutoff or self.CUTOFF,
+            "decision_eligible": eligible,
+        }
+
+    def test_feature_is_decision_eligible_matches_schemas(self):
+        # STRUCTURAL_LAG：上界 00:00 PT（07:00 UTC）<= cutoff（17:00 UTC）→ TRUE
+        from code.data_acquisition.schemas import (
+            AVAILABILITY_BASIS_KEY,
+            AVAILABILITY_BASIS_STRUCTURAL_LAG,
+            BOUND_RULE_DECISION_DATE_00_PT,
+            LATEST_POSSIBLE_AVAILABLE_AT_KEY,
+        )
+        meta = {AVAILABILITY_BASIS_KEY: AVAILABILITY_BASIS_STRUCTURAL_LAG,
+                LATEST_POSSIBLE_AVAILABLE_AT_KEY: BOUND_RULE_DECISION_DATE_00_PT}
+        self.assertTrue(feature_is_decision_eligible(meta, "2026-07-08", "2026-07-08T17:00:00"))
+        self.assertEqual(feature_available_bound(meta, "2026-07-08"), "2026-07-08T07:00:00")
+        self.assertEqual(structural_lag_available_bound("2026-07-08"), "2026-07-08T07:00:00")
+        # 反例：KNOWN_PUBLICATION available_at 晚于 cutoff → FALSE
+        late = {"available_at": "2026-07-08T18:00:00", "availability_basis": "KNOWN_PUBLICATION"}
+        self.assertFalse(feature_is_decision_eligible(late, "2026-07-08", "2026-07-08T17:00:00"))
+
+    def test_validate_ok_when_bound_before_cutoff(self):
+        feat = self._feat(eligible=True, bound="2026-07-09T00:00:00")
+        self.assertEqual(validate_feature_eligibility([feat], self.CUTOFF), [])
+
+    def test_validate_catches_eligible_but_late_bound(self):
+        # 铁律反例：decision_eligible=True 但 displayed available_at 上界晚于 cutoff → 违规
+        feat = self._feat(eligible=True, bound="2026-07-09T18:00:00")
+        violations = validate_feature_eligibility([feat], self.CUTOFF)
+        self.assertEqual(len(violations), 1)
+        self.assertIn("P0-2 硬规则", violations[0])
+        with self.assertRaises(RuntimeError):
+            assert_feature_eligibility_consistent([feat], self.CUTOFF)
+
+    def test_validate_ignores_ineligible(self):
+        # decision_eligible=False 恒允许（可能是时间缺失导致不可用，不产生展示矛盾）
+        feat = self._feat(eligible=False, bound="2026-07-09T18:00:00")
+        self.assertEqual(validate_feature_eligibility([feat], self.CUTOFF), [])
+
+    def test_validate_ignores_static(self):
+        feat = self._feat(eligible=True, bound="", basis="STATIC")
+        self.assertEqual(validate_feature_eligibility([feat], self.CUTOFF), [])
+
+    def test_validate_missing_bound_violates(self):
+        # decision_eligible=True 但无可用上界（无法证明 <= cutoff）→ 违规
+        feat = self._feat(eligible=True, bound="")
+        violations = validate_feature_eligibility([feat], self.CUTOFF)
+        self.assertEqual(len(violations), 1)
+        with self.assertRaises(RuntimeError):
+            assert_feature_eligibility_consistent([feat], self.CUTOFF)
+
+    def test_validate_empty_list_passes(self):
+        self.assertEqual(validate_feature_eligibility([], self.CUTOFF), [])
+        self.assertIsNone(assert_feature_eligibility_consistent([], self.CUTOFF))
 
 
 if __name__ == "__main__":

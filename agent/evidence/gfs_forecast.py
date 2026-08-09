@@ -1,34 +1,40 @@
 # -*- coding: utf-8 -*-
 """
-agent/evidence/gfs_forecast.py
+agent/evidence/gfs_forecast.py —— GFS Evidence Adapter（P0-1 单一事实来源）
+============================================================================
 
-Evidence 数据源接入（V0.2 真实 as-of 数据源）：NCEP GFS 历史预报档案。
+本模块是**纯 Adapter**：只做一件事——把 `code/data_acquisition/weather_gfs.py`
+（`GFSWeatherCollector`）产出的 **AsOfRecord** 转成 agent/evidence 层的
+**Evidence** 结构。**不自行计算任何时间逻辑**：
 
-选型结论（docs/evidence_source_v021.md 详述）：
-  - **唯一真实历史 as-of 数据源**：Open-Meteo Single Runs API 存档的 NCEP GFS
-    0.25°（`ncep_gfs025`）历史运行。提供每个模型 run（= forecast_issue_time）
-    的逐小时 D+1 天气预报（temperature_2m / wind_speed_100m / shortwave_radiation）。
-  - **as-of 语义**：对目标日 T（= decision_date + 1），取 decision_date 当天的
-    GFS 12Z run（12:00 UTC）。decision_cutoff = decision_date 10:00 PT
-    （夏令时 = 17:00 UTC，冬令时 = 18:00 UTC）。因 12:00 UTC 早于 cutoff，
-    forecast_issue_time <= decision_cutoff 恒成立（12Z 数据实际 ~15:30 UTC
-    发布，仍早于 17:00 UTC cutoff）——详见 docs 的发布时间口径一节。
-  - **不伪造**：若 API 失败/无该 run，返回空列表（无证据），绝不编造。
-    directional_effect 恒为 UNCERTAIN（预报本身不直接决定 Return 方向）。
+  - initialization_time / model_run_time : 取自 AsOfRecord.model_run_time
+  - published_at                         : 取自 AsOfRecord.published_at（init + 发布延迟模型）
+  - available_at                         : 取自 AsOfRecord.available_at（Time Gate 唯一判据）
+  - retrieved_at                         : 取自 AsOfRecord.retrieved_at（仅审计）
+  - decision_cutoff                      : 取自 AsOfRecord.decision_cutoff（D 10:00 PT → UTC）
+  - decision_eligible                    : 以 AsOfRecord 判定为准；Evidence schema 用
+                                            available_at 重算，本模块保证二者一致
+                                            （见 _finalize_eligible）。
 
-注意（时间口径）：
-  - 本模块输出的 published_at / decision_cutoff 一律为 **UTC naive** 字符串，
-    与 project 其它模块的 PT naive 口径不同，使用时须显式区分（决策时点换算见
-    `_pt_to_utc_naive`）。Evidence.decision_eligible 在本 Evidence 内自洽。
+单一 GFS 采集 + 时间判定源 = **`code/data_acquisition/weather_gfs.py`**。
+Web（decision card / fetcher）、CLI（mvp_demo / run_acquisition）、Agent
+（fetch_evidence）三条路径都经本 Adapter 走同一源 —— 时间字段完全一致。
+
+已废弃（P0-1 消除双实现）：
+  * 旧模块自算的 published_at = forecast_issue_time（把 12Z init 当发布时间，
+    导致 12Z 错误 eligible）→ 删除；发布时间改由 weather_gfs 延迟模型给出。
+  * 旧模块自算的 available_at / decision_eligible → 删除；全部取自 AsOfRecord。
+  * fetch_forecast_df / forecast_for_target（旧 Open-Meteo 直连抓取）→ 删除；
+    抓取统一走 GFSWeatherCollector（含降级：LIVE > CACHE > MOCK）。
+  * 保留 decision_cutoff_utc / forecast_issue_time_utc 仅作**废弃转发**，
+    供历史脚本（backtest_v2_ab 等）引用；可用性判定一律走 weather_gfs。
+
+时间口径：所有时间字段 UTC naive ISO（YYYY-MM-DDTHH:MM:SS），与 schemas 一致。
 """
 
 from __future__ import annotations
 
-import json
-import os
 import sys
-import urllib.request
-from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -36,179 +42,143 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-import pandas as pd  # noqa: E402
+from code.data_acquisition.schemas import (  # noqa: E402
+    MODE_BACKTEST,
+    NODE_COORDS,
+    make_decision_cutoff,
+    pt_naive_to_utc_naive,
+)
+from code.data_acquisition.weather_gfs import (  # noqa: E402
+    DEFAULT_CYCLE,
+    GFS_CYCLES_UTC,
+    GFSWeatherCollector,
+)
+from agent.evidence.schema import (  # noqa: E402
+    Evidence,
+    evidence_from_dict,
+)
 
-from agent.evidence.schema import Evidence, parse_timestamp  # noqa: E402
+#: 节点 → (纬度, 经度)，单一事实来源转发（schemas.NODE_COORDS）
+NODE_COORDS: Dict[str, tuple] = dict(NODE_COORDS)
 
-# ---------------------------------------------------------------------------
-# 常量
-# ---------------------------------------------------------------------------
-#: 节点 → (纬度, 经度)，来源：节点位置.xlsx
-NODE_COORDS: Dict[str, tuple] = {
-    "SNLNDRO_1_N001": (37.71123744, -122.1488067),
-    "CONTROLX_1_N001": (37.342839, -118.471988),
-    "ELCAJNGT_7_N001": (32.79534613, -116.9723386),
-}
-
-#: GFS 运行周期（UTC 初始时刻）；12Z 是 10:00 PT cutoff 前最新一跑
-GFS_CYCLES_UTC: Dict[str, str] = {"00Z": "00:00", "06Z": "06:00", "12Z": "12:00", "18Z": "18:00"}
-DEFAULT_CYCLE: str = "12Z"
-
-#: 从 API 取的天气变量（对齐 project 的 t2m_c / wind100 / ssrd_wm2）
-FORECAST_VARIABLES: tuple = ("temperature_2m", "wind_speed_100m", "shortwave_radiation")
-
-_SINGLE_RUNS_URL = "https://single-runs-api.open-meteo.com/v1/forecast"
-_UA = "caiso-evidence-agent/0.2 (as-of GFS forecast fetcher)"
+#: GFS 运行周期（UTC 初始时刻），单一事实来源转发（weather_gfs.GFS_CYCLES_UTC）
+GFS_CYCLES_UTC: Dict[str, str] = dict(GFS_CYCLES_UTC)
 
 
 # ---------------------------------------------------------------------------
-# 时间工具（PT → UTC naive）
+# [废弃转发] 旧时间工具（仅兼容历史脚本；可用性判定请走 weather_gfs）
 # ---------------------------------------------------------------------------
 def _pt_to_utc_naive(local_naive: str) -> str:
-    """把 naive PT（如 '2026-07-08T10:00:00'）换算成 naive UTC（ISO 字符串）。
-
-    使用 America/Los_Angeles 时区；zoneinfo 不可用时回退 DST 启发式
-    （3 月第 2 周日 ~ 11 月第 1 周日 = PDT/UTC−7，其余 = PST/UTC−8）。
-    """
-    try:
-        from zoneinfo import ZoneInfo
-        dt = datetime.fromisoformat(str(local_naive)[:19]).replace(tzinfo=ZoneInfo("America/Los_Angeles"))
-        return dt.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%S")
-    except Exception:
-        pass
-    d = datetime.fromisoformat(str(local_naive)[:19])
-    year = d.year
-    # 3 月第 2 周日（>=8）与 11 月第 1 周日（1~7）
-    def _nth_sunday(y, month, n):
-        first = date(y, month, 1)
-        offset = (6 - first.weekday()) % 7
-        return first + timedelta(days=offset + 7 * (n - 1))
-    start_dst = datetime.combine(_nth_sunday(year, 3, 2), datetime.min.time())
-    end_dst = datetime.combine(_nth_sunday(year, 11, 1), datetime.min.time())
-    offset_h = 7 if start_dst <= d < end_dst else 8
-    return (d - timedelta(hours=offset_h)).strftime("%Y-%m-%dT%H:%M:%S")
+    """[已废弃] naive PT → naive UTC。转发 schemas.pt_naive_to_utc_naive。"""
+    return pt_naive_to_utc_naive(local_naive) or ""
 
 
 def decision_cutoff_utc(decision_date: str) -> str:
-    """decision_date 10:00 PT → UTC（Evidence.decision_cutoff 用，naive UTC）。"""
-    return _pt_to_utc_naive(f"{str(decision_date)[:10]}T10:00:00")
+    """[已废弃] D 10:00 PT → UTC naive。转发 schemas.make_decision_cutoff。
+
+    仅保留供历史脚本（backtest_v2_ab 的 APPROX 证据）引用；cutoff 判定的
+    单一事实来源是 schemas.make_decision_cutoff。
+    """
+    return make_decision_cutoff(decision_date) or ""
 
 
-def forecast_issue_time_utc(decision_date: str, cycle: str = DEFAULT_CYCLE) -> str:
-    """GFS run 初始时刻 = forecast_issue_time（naive UTC）。"""
-    return f"{str(decision_date)[:10]}T{GFS_CYCLES_UTC.get(cycle, GFS_CYCLES_UTC[DEFAULT_CYCLE])}:00"
+def forecast_issue_time_utc(decision_date: str, cycle: str = "12Z") -> str:
+    """[已废弃] GFS run 初始时刻（= initialization_time，UTC naive）。
+
+    旧默认 12Z 仅为了与历史脚本行为一致；新单一源默认 cycle 见
+    weather_gfs.DEFAULT_CYCLE（06Z）。本函数只算 run 起始，不判可用性。
+    """
+    cyc = GFS_CYCLES_UTC.get(cycle, GFS_CYCLES_UTC["12Z"])
+    return f"{str(decision_date)[:10]}T{cyc}:00"
 
 
 # ---------------------------------------------------------------------------
-# 数据抓取
+# Adapter 核心
 # ---------------------------------------------------------------------------
-def _coord_of(node: str) -> Optional[tuple]:
-    return NODE_COORDS.get(node)
+def _make_collector(
+    node: str,
+    cycle: str,
+    mode: str = MODE_BACKTEST,
+    network_enabled: bool = True,
+) -> GFSWeatherCollector:
+    """构造 GFS 采集器（单一事实来源：weather_gfs.GFSWeatherCollector）。"""
+    return GFSWeatherCollector(
+        node=node, cycle=cycle, mode=mode, network_enabled=network_enabled)
 
 
-def fetch_forecast_df(
+def _region_of(node: str) -> str:
+    if "CONTROLX" in node or "SNLNDRO" in node:
+        return "ZP26"
+    if "ELCA" in node:
+        return "SP15"
+    return "UNKNOWN"
+
+
+def _finalize_eligible(ev: Evidence, asof_eligible: bool) -> Evidence:
+    """保证 Evidence 重算的 decision_eligible == AsOfRecord 判定（单一事实来源）。
+
+    正常情况下（available_at 非空）schema 用 available_at 重算，天然一致；
+    仅当 AsOfRecord 判不可用、但 published_at 回退口径会让 Evidence 误判可用时
+    （如 12Z 冬令时边界：published 估计 == cutoff，但无可靠 vintage），
+    清空 published_at（绝不回退到 initialization_time），使重算与 AsOfRecord 一致。
+    """
+    if bool(ev.decision_eligible) != bool(asof_eligible):
+        ev.published_at = ""
+    return ev
+
+
+def _aggregate_records(
+    records: List[Dict[str, Any]],
     node: str,
     decision_date: str,
-    cycle: str = DEFAULT_CYCLE,
-    variables: Optional[List[str]] = None,
-    timeout: int = 60,
-) -> pd.DataFrame:
-    """抓取 GFS 指定 run 的逐小时预报（含 forecast 前 7 天，供目标日切窗）。
+    cycle: str,
+    source_url: str,
+) -> Optional[Evidence]:
+    """把同 run 的 AsOfRecord 列表聚合为一条 D+1 预报 Evidence。
 
-    Returns:
-        空 DataFrame 表示该 run 不可得/请求失败（不伪造）。
+    时间字段（published_at / available_at / retrieved_at / decision_cutoff /
+    model_run_time）与 decision_eligible 全部取自 AsOfRecord（同 run 的 72 条
+    逐小时记录共享同一时间戳），本函数不自行计算。
     """
-    coord = _coord_of(node)
-    if coord is None:
-        return pd.DataFrame()
-    lat, lon = coord
-    cyc = GFS_CYCLES_UTC.get(cycle, GFS_CYCLES_UTC[DEFAULT_CYCLE])
-    run = f"{str(decision_date)[:10]}T{cyc}"
-    vars_ = "&".join(f"hourly={v}" for v in (variables or list(FORECAST_VARIABLES)))
-    # wind_speed_unit=ms：与 project wind100 (m/s) 口径一致
-    url = (
-        f"{_SINGLE_RUNS_URL}?latitude={lat}&longitude={lon}"
-        f"&run={run}&{vars_}&wind_speed_unit=ms&models=gfs_global&timezone=UTC"
-    )
-    req = urllib.request.Request(url, headers={"User-Agent": _UA})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.load(resp)
-    except Exception as exc:  # 网络/HTTP/解析失败 → 空（诚实，不编造）
-        print(f"[gfs_forecast] fetch failed for {node} {decision_date} {cycle}: {type(exc).__name__}: {exc}")
-        return pd.DataFrame()
-    h = data.get("hourly", {})
-    if not h or "time" not in h:
-        return pd.DataFrame()
-    df = pd.DataFrame(h)
-    df["time"] = pd.to_datetime(df["time"])
-    return df
-
-
-def forecast_for_target(
-    node: str,
-    target_date: str,
-    cycle: str = DEFAULT_CYCLE,
-) -> pd.DataFrame:
-    """取 target_date 当天 24 小时的 GFS 预报（decision_date = target_date − 1）。"""
-    d = pd.to_datetime(str(target_date)[:10])
-    decision_date = (d - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-    df = fetch_forecast_df(node, decision_date, cycle=cycle)
-    if df.empty:
-        return df
-    t0 = d.strftime("%Y-%m-%d")
-    out = df[df["time"].dt.strftime("%Y-%m-%d") == t0].reset_index(drop=True)
-    return out
-
-
-# ---------------------------------------------------------------------------
-# Evidence 构建
-# ---------------------------------------------------------------------------
-def build_gfs_evidence(
-    node: str,
-    decision_date: str,
-    cycle: str = DEFAULT_CYCLE,
-) -> Dict[str, Any]:
-    """构建一条 GFS D+1 天气预报 Evidence（as-of，directional_effect=UNCERTAIN）。
-
-    时间字段（均 naive UTC）：
-      published_at       = forecast_issue_time = decision_date 12Z（12:00 UTC）
-      decision_cutoff    = decision_date 10:00 PT → UTC
-      decision_eligible  = 程序计算（published_at <= decision_cutoff）
-    """
-    d = pd.to_datetime(str(decision_date)[:10])
-    target_date = (d + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-    df = forecast_for_target(node, target_date, cycle=cycle)
-    if df.empty:
-        return {}
-
-    pub = forecast_issue_time_utc(decision_date, cycle)
-    cutoff = decision_cutoff_utc(decision_date)
-
-    # 数据完整性置信度（证据质量分，非价格概率）
-    fractions = []
-    for v in FORECAST_VARIABLES:
-        col = df[v] if v in df.columns else pd.Series([None] * len(df))
-        n_ok = int(col.notna().sum())
-        fractions.append(n_ok / max(1, len(df)))
-    completeness = sum(fractions) / len(fractions)
-
-    def _mean(v):
-        if v in df.columns:
-            s = df[v].dropna()
-            return float(s.mean()) if len(s) else None
+    if not records:
         return None
+    first = records[0]
+    target_time = str(first.get("target_time", ""))
+    target_date = target_time[:10] or ""
 
-    t2m = _mean("temperature_2m")
-    wind = _mean("wind_speed_100m")
-    ssrd = _mean("shortwave_radiation")
+    asof_eligible = bool(first.get("decision_eligible", False))
+    published_at = str(first.get("published_at", ""))
+    available_at = str(first.get("available_at", ""))
+    retrieved_at = str(first.get("retrieved_at", ""))
+    decision_cutoff = str(first.get("decision_cutoff", ""))
+    model_run_time = str(first.get("model_run_time", "")) or str(first.get("issue_time", ""))
+    forecast_run = str(first.get("forecast_run", "")) or f"{decision_date}T{cycle}"
 
+    # 逐变量 24h 完整度 / 均值（仅用决策日 D 的目标日 T = D+1 的记录）
+    fractions: List[float] = []
+    means: Dict[str, Optional[float]] = {}
+    for fn in ("t2m", "wind100", "ssrd"):
+        f_recs = [r for r in records if r.get("field_name") == fn]
+        if not f_recs:
+            means[fn] = None
+            fractions.append(0.0)
+            continue
+        values = [r.get("value") for r in f_recs if r.get("value") is not None]
+        n_present = len(values)
+        fractions.append(n_present / max(1, len(f_recs)))
+        means[fn] = (sum(values) / len(values)) if values else None
+    completeness = (sum(fractions) / len(fractions)) if fractions else 0.0
+
+    t2m = means.get("t2m")
+    wind = means.get("wind100")
+    ssrd = means.get("ssrd")
     summary = (
         f"D+1({target_date}) GFS {cycle} 预报：t2m 均值 "
         f"{t2m if t2m is not None else float('nan'):.1f}°C，wind100 均值 "
         f"{wind if wind is not None else float('nan'):.1f} m/s，ssrd 均值 "
         f"{ssrd if ssrd is not None else float('nan'):.0f} W/m²"
-        f"（forecast_issue={pub} UTC，24h 完整度 {completeness*100:.0f}%）。"
+        f"（forecast_issue={model_run_time} UTC，available="
+        f"{available_at or 'UNKNOWN(无可靠 vintage)'}，24h 完整度 {completeness * 100:.0f}%）。"
     )
 
     ev = Evidence(
@@ -220,26 +190,66 @@ def build_gfs_evidence(
         event_end_time=f"{target_date}T23:00:00",
         severity="INFO",
         source="Open-Meteo Single Runs API (NCEP GFS 0.25°, gfs_global)",
-        source_url=(
-            f"{_SINGLE_RUNS_URL}?latitude={_coord_of(node)[0]}&longitude={_coord_of(node)[1]}"
-            f"&run={forecast_issue_time_utc(decision_date, cycle)}&hourly=temperature_2m,"
-            f"wind_speed_100m,shortwave_radiation&models=gfs_global&timezone=UTC"
-        ),
-        published_at=pub,
-        retrieved_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
-        decision_cutoff=cutoff,
+        source_url=source_url,
+        source_type=str(first.get("source_type", "") or "WEATHER"),
+        is_mock=bool(first.get("is_mock", False)),
+        raw_source_id=str(first.get("raw_source_id", "")) or f"run={model_run_time}&node={node}",
+        published_at=published_at,
+        available_at=available_at,
+        retrieved_at=retrieved_at,
+        target_time=target_time,
+        decision_cutoff=decision_cutoff,
         summary=summary,
-        directional_effect="UNCERTAIN",  # 预报不直接决定 Return 方向（诚实）
+        directional_effect="UNCERTAIN",   # 预报不直接决定 Return 方向（诚实）
         confidence=round(completeness, 3),
-    )
-    return ev.to_dict()
+    ).normalize()
+    return _finalize_eligible(ev, asof_eligible)
+
+
+def build_gfs_evidence(
+    node: str,
+    decision_date: str,
+    cycle: Optional[str] = None,
+    mode: str = MODE_BACKTEST,
+    network_enabled: bool = True,
+    use_cache: bool = True,
+    _collector: Optional[GFSWeatherCollector] = None,
+) -> Dict[str, Any]:
+    """构建一条 GFS D+1 天气预报 Evidence（as-of，directional_effect=UNCERTAIN）。
+
+    统一 GFS 源：`weather_gfs.GFSWeatherCollector`（Open-Meteo Single Runs）。
+    - cycle 缺省 = weather_gfs.DEFAULT_CYCLE（06Z，可严格回测）。
+    - 时间字段 / decision_eligible 全部取自 AsOfRecord（见 _aggregate_records）。
+    - MOCK 降级（网络失败且无缓存）→ 返回 {}（诚实：不编造天气预报）。
+    - 12Z/18Z 回测（无可靠 vintage）→ available_at="" → decision_eligible=FALSE
+      （除非 PRODUCTION 模式在 cutoff 前真实拉到，记 retrieved_at）。
+    """
+    cyc = cycle or DEFAULT_CYCLE
+    col = _collector or _make_collector(
+        node=node, cycle=cyc, mode=mode, network_enabled=network_enabled)
+    res = col.run(str(decision_date)[:10], save=False, use_cache=use_cache)
+
+    if not res.records or res.metadata.get("is_mock"):
+        # 网络失败 / 无缓存 / 底层即 MOCK：宁可无证据，不可用假预报冒充
+        return {}
+
+    source_url = ""
+    try:
+        source_url = col._build_url(str(decision_date)[:10])
+    except Exception:
+        source_url = ""
+    ev = _aggregate_records(res.records, node, str(decision_date)[:10], cyc, source_url)
+    return ev.to_dict() if ev is not None else {}
 
 
 def fetch_gfs_weather_evidence(
     node: str,
     decision_date: str,
     hours: Optional[List[int]] = None,
-    cycle: str = DEFAULT_CYCLE,
+    cycle: Optional[str] = None,
+    mode: str = MODE_BACKTEST,
+    network_enabled: bool = True,
+    use_cache: bool = True,
 ) -> List[Dict[str, Any]]:
     """Fetcher 注册回调：fetch_evidence → 本函数（见 fetcher.py FETCHER_REGISTRY）。
 
@@ -247,32 +257,22 @@ def fetch_gfs_weather_evidence(
         node: 目标节点
         decision_date: 决策日期（ISO YYYY-MM-DD，= target_date − 1）
         hours: 保留参数（按小时切窗），当前证据按整日聚合
-        cycle: GFS 运行周期（默认 12Z）
+        cycle: GFS 运行周期（缺省 = weather_gfs.DEFAULT_CYCLE=06Z）
     Returns:
-        标准 Evidence dict 列表；抓取失败返回 []（不编造）。
+        标准 Evidence dict 列表；抓取失败 / MOCK 降级返回 []（不编造）。
     """
     _ = hours
-    ev = build_gfs_evidence(node, decision_date, cycle=cycle)
+    ev = build_gfs_evidence(
+        node, decision_date, cycle=cycle, mode=mode,
+        network_enabled=network_enabled, use_cache=use_cache)
     return [ev] if ev else []
-
-
-def _region_of(node: str) -> str:
-    if "CONTROLX" in node or "SNLNDRO" in node:
-        return "ZP26"
-    if "ELCA" in node:
-        return "SP15"
-    return "UNKNOWN"
 
 
 # ---------------------------------------------------------------------------
 # 自检
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    import sys as _sys
-    from agent.evidence.time_gate import is_decision_eligible
-
     def _sp(x):
-        """控制台安全打印（GBK 控制台对部分字符会炸）。"""
         try:
             print(x)
         except Exception:
@@ -282,12 +282,13 @@ if __name__ == "__main__":
         decision_date = "2026-07-08"
         evs = fetch_gfs_weather_evidence(node, decision_date)
         if not evs:
-            _sp(f"[{node}] no evidence (fetch failed)")
+            _sp(f"[{node}] no evidence (fetch failed / MOCK)")
             continue
         ev = evs[0]
         _sp(f"--- {node} decision={decision_date} ---")
-        for k in ("evidence_id", "published_at", "decision_cutoff", "decision_eligible",
-                  "directional_effect", "confidence", "summary"):
+        for k in ("evidence_id", "published_at", "available_at", "decision_cutoff",
+                  "decision_eligible", "directional_effect", "confidence", "summary"):
             _sp(f"  {k}: {ev.get(k)}")
+        from agent.evidence.time_gate import is_decision_eligible
         _sp("  is_decision_eligible(time_gate): " +
-            str(is_decision_eligible(ev)))
+            str(is_decision_eligible(evidence_from_dict(ev))))

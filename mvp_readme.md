@@ -3,6 +3,10 @@
 > 文件：`mvp_demo.py`（入口脚本）｜ 配套：`mvp_readme.md`（本文档）
 > 系统归属：V0.2 白盒交易决策流水线（Agent D · MVP Demo 工程师）
 
+> **注意（V0.3.1）**：现在推荐使用浏览器版 **Web + LLM Agent MVP**（`python mvp_web.py` →
+> http://127.0.0.1:5000），功能与本文档所述一致并新增 Ask Trading Agent（自然语言追问 +
+> Agent Trace）与每日简报。启动方式见 `README.md`。本文档仍适用于命令行版 `mvp_demo.py`。
+
 ---
 
 ## 0. 一句话介绍

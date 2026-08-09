@@ -200,5 +200,60 @@ class TestRuleEngineWarningEscalation(unittest.TestCase):
         self.assertIn("RISK_GATE_REJECTED", d.reasons)
 
 
+class TestDecisionFeatureEligibility(unittest.TestCase):
+    """Agent B P0-2：Decision 携带特征展示，强制"展示 == Time Gate 判定"。"""
+
+    CUTOFF = "2026-07-09T17:00:00"   # 2026-07-09 10:00 PT → UTC（PDT）
+
+    def setUp(self):
+        self.engine = RuleEngine()
+
+    def _feat(self, eligible=True, bound=None, basis="STRUCTURAL_LAG"):
+        bound_val = "2026-07-09T00:00:00" if bound is None else bound
+        return {
+            "feature": "spread_lag1",
+            "available_at": bound_val,
+            "latest_possible_available_at": bound_val,
+            "availability_basis": basis,
+            "decision_cutoff": self.CUTOFF,
+            "decision_eligible": eligible,
+        }
+
+    def test_valid_features_used_stored_and_consistent(self):
+        feats = [self._feat(eligible=True, bound="2026-07-09T00:00:00")]
+        d = self.engine.evaluate(_pred(), features_used=feats, decision_cutoff=self.CUTOFF)
+        self.assertEqual(d.decision, "SELL_DA")
+        self.assertEqual(d.features_used, feats)
+        self.assertTrue(d.feature_eligibility_consistent)
+        self.assertEqual(d.feature_eligibility_violations(self.CUTOFF), [])
+        d2 = d.to_dict()
+        self.assertIn("features_used", d2)
+        self.assertIn("feature_eligibility_consistent", d2)
+        self.assertTrue(d2["feature_eligibility_consistent"])
+
+    def test_late_bound_with_eligible_true_raises(self):
+        # 铁律反例：displayed available_at 上界(18:00) > cutoff(17:00) 但声明 eligible=True
+        feats = [self._feat(eligible=True, bound="2026-07-09T18:00:00")]
+        with self.assertRaises(RuntimeError):
+            self.engine.evaluate(_pred(), features_used=feats, decision_cutoff=self.CUTOFF)
+
+    def test_ineligible_feature_allowed(self):
+        # eligible=False 不产生展示矛盾（不可用就是不可用）
+        feats = [self._feat(eligible=False, bound="2026-07-09T18:00:00")]
+        d = self.engine.evaluate(_pred(), features_used=feats, decision_cutoff=self.CUTOFF)
+        self.assertEqual(d.decision, "SELL_DA")
+        self.assertTrue(d.feature_eligibility_consistent)
+
+    def test_static_feature_allowed(self):
+        feats = [self._feat(eligible=True, bound="", basis="STATIC")]
+        d = self.engine.evaluate(_pred(), features_used=feats, decision_cutoff=self.CUTOFF)
+        self.assertTrue(d.feature_eligibility_consistent)
+
+    def test_no_features_used_default_consistent(self):
+        d = self.engine.evaluate(_pred())
+        self.assertEqual(d.features_used, [])
+        self.assertTrue(d.feature_eligibility_consistent)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

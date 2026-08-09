@@ -4,8 +4,13 @@ code/data_acquisition/weather_gfs.py —— GFS 天气预报采集器（Agent E 
 
 数据源：Open-Meteo Single Runs API 存档的 NCEP GFS 0.25°（`gfs_global`）。
   - 按 `run=YYYY-MM-DDTHH:00` 取**历史 as-issued 预报 run**（= forecast_issue_time），
-    不是 ERA5/再分析反演（as-of 安全，与 agent/evidence/gfs_forecast.py 同源）。
+    不是 ERA5/再分析反演（as-of 安全）。
   - 决策日 D，默认取 D 06Z run（06:00 UTC；00Z/06Z 可回测），目标交付日 T = D+1。
+
+**P0-1 单一事实来源**：本模块是 GFS 采集 + 时间判定的唯一实现。
+  `agent/evidence/gfs_forecast.py` 已降级为**纯 Adapter**（把本模块的 AsOfRecord
+  转成 agent/evidence 的 Evidence），不再自行计算 published/available/eligible。
+  Web / CLI / Agent 三条路径均经该 Adapter 走本模块。
 
 五个时间概念（P0-1，全部 UTC naive；字段名保留英文）
 ------------------------------------------------------

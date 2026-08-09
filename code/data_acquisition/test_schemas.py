@@ -19,6 +19,14 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from code.data_acquisition.schemas import (
+    AVAILABILITY_BASIS_ASSUMED_AVAILABLE,
+    AVAILABILITY_BASIS_KEY,
+    AVAILABILITY_BASIS_KNOWN_PUBLICATION,
+    AVAILABILITY_BASIS_STATIC,
+    AVAILABILITY_BASIS_STRUCTURAL_LAG,
+    BOUND_RULE_DECISION_DATE_00_PT,
+    HAS_PRECISE_PUBLISH_TIME_KEY,
+    LATEST_POSSIBLE_AVAILABLE_AT_KEY,
     MODE_BACKTEST,
     MODE_PRODUCTION,
     SOURCE_TYPES,
@@ -27,14 +35,18 @@ from code.data_acquisition.schemas import (
     assert_no_post_decision,
     asof_from_dict,
     ensure_asof_dict,
+    feature_available_at_display,
+    feature_decision_eligible,
     gate_asof_records,
     infer_source_type,
+    latest_available_bound,
     lead_hours_of,
     make_decision_cutoff,
     parse_timestamp,
     pt_naive_to_utc_naive,
     resolve_available_at,
     snapshot_from_asof_record,
+    structural_lag_available_bound,
     target_time_pt_to_utc,
     validate_asof_record,
     validate_snapshot,
@@ -513,6 +525,93 @@ class TestProvenanceFields(unittest.TestCase):
         errs = validate_asof_record(bad)
         self.assertTrue(any("source_type" in e for e in errs), errs)
         self.assertTrue(any("market_rule_version" in e for e in errs), errs)
+
+
+class TestFeatureAvailabilitySemantics(unittest.TestCase):
+    """Agent B P0-2：展示口径 == Time Gate 判定口径，禁止编造精确发布时刻。"""
+
+    def _lag(self, **over):
+        meta = {
+            AVAILABILITY_BASIS_KEY: AVAILABILITY_BASIS_STRUCTURAL_LAG,
+            LATEST_POSSIBLE_AVAILABLE_AT_KEY: BOUND_RULE_DECISION_DATE_00_PT,
+            HAS_PRECISE_PUBLISH_TIME_KEY: False,
+        }
+        meta.update(over)
+        return meta
+
+    # ---- 最晚可证上界 ----
+    def test_structural_lag_bound_decision_date_00pt_to_utc(self):
+        # 2026-07-08 为 PDT（UTC−7）：00:00 PT → 07:00 UTC
+        self.assertEqual(structural_lag_available_bound("2026-07-08"), "2026-07-08T07:00:00")
+        # 2026-01-08 为 PST（UTC−8）：00:00 PT → 08:00 UTC
+        self.assertEqual(structural_lag_available_bound("2026-01-08"), "2026-01-08T08:00:00")
+        self.assertIsNone(structural_lag_available_bound(""))
+        self.assertIsNone(structural_lag_available_bound(None))
+
+    def test_latest_available_bound_by_basis(self):
+        self.assertEqual(latest_available_bound(self._lag(), "2026-07-08"), "2026-07-08T07:00:00")
+        assumed = {AVAILABILITY_BASIS_KEY: AVAILABILITY_BASIS_ASSUMED_AVAILABLE,
+                   LATEST_POSSIBLE_AVAILABLE_AT_KEY: BOUND_RULE_DECISION_DATE_00_PT}
+        self.assertEqual(latest_available_bound(assumed, "2026-07-08"), "2026-07-08T07:00:00")
+        known = {AVAILABILITY_BASIS_KEY: AVAILABILITY_BASIS_KNOWN_PUBLICATION,
+                 "available_at": "2026-07-08T12:00:00"}
+        self.assertEqual(latest_available_bound(known, "2026-07-08"), "2026-07-08T12:00:00")
+        static = {AVAILABILITY_BASIS_KEY: AVAILABILITY_BASIS_STATIC}
+        self.assertIsNone(latest_available_bound(static, "2026-07-08"))   # 静态无时间门槛
+        self.assertIsNone(latest_available_bound({}, "2026-07-08"))       # UNKNOWN/缺字段 → 无上界
+
+    # ---- 特征级 Time Gate ----
+    def test_feature_decision_eligible_hard_rule(self):
+        cutoff = make_decision_cutoff("2026-07-08")   # 17:00 UTC（PDT）
+        # STRUCTURAL_LAG：上界 00:00 PT = 07:00 UTC <= 17:00 UTC → TRUE
+        self.assertTrue(feature_decision_eligible(self._lag(), "2026-07-08", cutoff))
+        # STATIC：恒 TRUE
+        self.assertTrue(feature_decision_eligible({AVAILABILITY_BASIS_KEY: AVAILABILITY_BASIS_STATIC},
+                                                  "2026-07-08", cutoff))
+        # KNOWN_PUBLICATION：available_at(12:00 UTC) <= cutoff(17:00) → TRUE
+        known = {AVAILABILITY_BASIS_KEY: AVAILABILITY_BASIS_KNOWN_PUBLICATION,
+                 "available_at": "2026-07-08T12:00:00"}
+        self.assertTrue(feature_decision_eligible(known, "2026-07-08", cutoff))
+        # KNOWN_PUBLICATION：available_at(18:00 UTC) > cutoff(17:00) → FALSE（铁律反例）
+        late = {AVAILABILITY_BASIS_KEY: AVAILABILITY_BASIS_KNOWN_PUBLICATION,
+                "available_at": "2026-07-08T18:00:00"}
+        self.assertFalse(feature_decision_eligible(late, "2026-07-08", cutoff))
+        # UNKNOWN/缺字段 → FALSE
+        self.assertFalse(feature_decision_eligible({}, "2026-07-08", cutoff))
+        # cutoff 缺失 → FALSE（宁保守不穿越）
+        self.assertFalse(feature_decision_eligible(self._lag(), "2026-07-08", None))
+
+    # ---- 展示字符串：不出现伪精确时间戳 ----
+    def test_display_has_no_fake_precise_timestamp(self):
+        disp = feature_available_at_display(self._lag(), "2026-07-16")
+        self.assertEqual(disp, "≤ 2026-07-16 00:00 PT")   # 最晚可证上界
+        self.assertNotIn("23:59", disp)
+        self.assertIn("≤", disp)
+        assumed = {AVAILABILITY_BASIS_KEY: AVAILABILITY_BASIS_ASSUMED_AVAILABLE,
+                   LATEST_POSSIBLE_AVAILABLE_AT_KEY: BOUND_RULE_DECISION_DATE_00_PT}
+        self.assertIn("≤ 2026-07-16 00:00 PT", feature_available_at_display(assumed, "2026-07-16"))
+        known = {AVAILABILITY_BASIS_KEY: AVAILABILITY_BASIS_KNOWN_PUBLICATION,
+                 "available_at": "2026-07-08T12:00:00"}
+        self.assertEqual(feature_available_at_display(known, "2026-07-16"), "2026-07-08T12:00:00")
+        self.assertEqual(feature_available_at_display({AVAILABILITY_BASIS_KEY: AVAILABILITY_BASIS_STATIC},
+                                                      "2026-07-16"), "静态/日历（恒可用）")
+
+    # ---- canonical availability_map 全特征复算（P0-2 铁律）----
+    def test_canonical_availability_map_all_eligible(self):
+        from code.canonical import X_COLUMNS, availability_map
+        av = availability_map()
+        self.assertEqual(set(av.keys()), set(X_COLUMNS))
+        for dd in ("2026-01-08", "2026-07-08"):
+            cutoff = make_decision_cutoff(dd) or ""
+            for f, meta in av.items():
+                self.assertTrue(
+                    feature_decision_eligible(meta, dd, cutoff),
+                    f"P0-2 特征 {f} @ {dd} 判定不可用（展示与 Time Gate 不一致）")
+                self.assertNotIn("23:59", feature_available_at_display(meta, dd),
+                                 f"P0-2 特征 {f} 展示出现伪精确时间戳 23:59")
+            # 静态特征无精确发布时刻；其余 X 特征均有 basis
+            for f in X_COLUMNS:
+                self.assertIn(AVAILABILITY_BASIS_KEY, av[f], f"特征 {f} 缺 availability_basis")
 
 
 if __name__ == "__main__":
