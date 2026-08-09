@@ -7,3 +7,4 @@ code/tmp/*
 code/backtest_outputs/*.png
 code/backtest_outputs/*_selftest.csv
 catboost_info/
+.env

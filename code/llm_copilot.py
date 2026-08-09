@@ -622,6 +622,30 @@ def _summary_of(result: Any) -> str:
     return s
 
 
+def _load_env_file():
+    """把项目根 .env（若存在）加载到 os.environ，不覆盖已有变量。
+
+    用途：允许 LLM_API_KEY 等配置放在 .env（已 gitignore），避免硬编码进代码。
+    Key 绝不落代码 / 不入 git。
+    """
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env_path = os.path.join(here, ".env")
+    if not os.path.exists(env_path):
+        return
+    try:
+        with open(env_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                k, v = k.strip(), v.strip()
+                if k and k not in os.environ:
+                    os.environ[k] = v
+    except Exception:
+        pass
+
+
 class LLMCopilot:
     """Trading Decision Copilot：LLM 只解释，不决策。所有数字来自 Tool。"""
 
@@ -631,6 +655,8 @@ class LLMCopilot:
                  max_tool_rounds: Optional[int] = None, timeout: Optional[float] = None,
                  llm_client: Optional[LlmClient] = None, env: Optional[Dict[str, str]] = None):
         self.service = service if service is not None else default_service()
+        if env is None:
+            _load_env_file()
         cfg = dict(env) if env else os.environ
 
         self.provider = (provider or cfg.get("LLM_PROVIDER", "") or "").strip().lower()
